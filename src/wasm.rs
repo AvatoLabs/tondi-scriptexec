@@ -1,5 +1,4 @@
-use crate::data_structures::TondiScript;
-use crate::error::ExecError;
+use crate::data_structures::{StackExt, TondiScript};
 use crate::{create_executor, ExecCtx, Options, TondiScriptExecutor};
 use wasm_bindgen::prelude::*;
 
@@ -62,8 +61,7 @@ impl TondiScriptExecutorWasm {
 
     /// 执行脚本
     pub fn execute(&mut self, script_hex: &str) -> Result<ExecutionResultWasm, JsValue> {
-        let script = TondiScript::from_hex(script_hex)
-            .map_err(|e| JsValue::from_str(&format!("脚本解析失败: {:?}", e)))?;
+        let script = TondiScript::from_bytes(hex::decode(script_hex).unwrap_or_default());
 
         let start = std::time::Instant::now();
 
@@ -74,9 +72,14 @@ impl TondiScriptExecutorWasm {
                 Ok(ExecutionResultWasm {
                     success: true,
                     error: None,
-                    final_stack: self.executor.stack().as_ref().iter().map(|item| hex::encode(item)).collect(),
+                    final_stack: self
+                        .executor
+                        .stack()
+                        .iter()
+                        .map(|item| hex::encode(item))
+                        .collect(),
                     final_stack_size: self.executor.stack().len(),
-                    total_ops: self.executor.op_count(),
+                    total_ops: self.executor.op_count().try_into().unwrap(),
                     execution_time_ms: 0, // TODO: 实现实际的时间测量
                 })
             }
@@ -86,9 +89,14 @@ impl TondiScriptExecutorWasm {
                 Ok(ExecutionResultWasm {
                     success: false,
                     error: Some(format!("{:?}", e)),
-                    final_stack: self.executor.stack().as_ref().iter().map(|item| hex::encode(item)).collect(),
+                    final_stack: self
+                        .executor
+                        .stack()
+                        .iter()
+                        .map(|item| hex::encode(item))
+                        .collect(),
                     final_stack_size: self.executor.stack().len(),
-                    total_ops: self.executor.op_count(),
+                    total_ops: self.executor.op_count().try_into().unwrap(),
                     execution_time_ms: 0, // TODO: 实现实际的时间测量
                 })
             }
@@ -97,17 +105,25 @@ impl TondiScriptExecutorWasm {
 
     /// 获取当前栈状态
     pub fn get_stack(&self) -> Vec<String> {
-        self.executor.stack().as_ref().iter().map(|item| hex::encode(item)).collect()
+        self.executor
+            .stack()
+            .iter()
+            .map(|item| hex::encode(item))
+            .collect()
     }
 
     /// 获取备用栈状态
     pub fn get_altstack(&self) -> Vec<String> {
-        self.executor.altstack().as_ref().iter().map(|item| hex::encode(item)).collect()
+        self.executor
+            .altstack()
+            .iter()
+            .map(|item| hex::encode(item))
+            .collect()
     }
 
     /// 获取操作码计数
     pub fn get_op_count(&self) -> usize {
-        self.executor.op_count()
+        self.executor.op_count().try_into().unwrap()
     }
 
     /// 清空栈
@@ -177,6 +193,7 @@ pub struct StackItemWasm {
 }
 
 /// 获取操作码名称
+#[allow(dead_code)]
 fn get_opcode_name(opcode: u8) -> String {
     match opcode {
         0x00 => "OP_0".to_string(),
@@ -215,10 +232,9 @@ fn get_opcode_name(opcode: u8) -> String {
 /// 解析脚本为WASM格式
 #[wasm_bindgen]
 pub fn parse_script(script_hex: &str) -> Result<ScriptInfoWasm, JsValue> {
-    let script = TondiScript::from_hex(script_hex)
-        .map_err(|e| JsValue::from_str(&format!("脚本解析失败: {:?}", e)))?;
+    let script = TondiScript::from_bytes(hex::decode(script_hex).unwrap_or_default());
 
-    let bytes = script.as_bytes();
+    let bytes = script.to_bytes();
     let mut opcodes = Vec::new();
     let mut i = 0;
 
@@ -262,28 +278,71 @@ pub fn parse_script(script_hex: &str) -> Result<ScriptInfoWasm, JsValue> {
 /// 获取操作码信息
 fn get_opcode_info(opcode: u8) -> (String, String, String) {
     match opcode {
-        0x00 => ("OP_0".to_string(), "推入空数据".to_string(), "Constant".to_string()),
+        0x00 => (
+            "OP_0".to_string(),
+            "推入空数据".to_string(),
+            "Constant".to_string(),
+        ),
         0x51..=0x60 => {
             let n = opcode - 0x50;
-            (format!("OP_{}", n), format!("推入数字 {}", n), "Constant".to_string())
+            (
+                format!("OP_{}", n),
+                format!("推入数字 {}", n),
+                "Constant".to_string(),
+            )
         }
-        0x4f => ("OP_1NEGATE".to_string(), "推入 -1".to_string(), "Constant".to_string()),
-        0x76 => ("OP_DUP".to_string(), "复制栈顶元素".to_string(), "Stack".to_string()),
-        0x87 => ("OP_EQUAL".to_string(), "比较两个元素是否相等".to_string(), "Logic".to_string()),
-        0x88 => ("OP_EQUALVERIFY".to_string(), "比较两个元素是否相等，失败则终止".to_string(), "Logic".to_string()),
-        0x69 => ("OP_VERIFY".to_string(), "验证栈顶元素是否为真".to_string(), "Logic".to_string()),
-        0xa9 => ("OP_HASH160".to_string(), "计算HASH160（SHA256+RIPEMD160）".to_string(), "Hash".to_string()),
-        0xac => ("OP_CHECKSIG".to_string(), "验证ECDSA签名".to_string(), "Signature".to_string()),
-        0x6a => ("OP_RETURN".to_string(), "终止执行".to_string(), "ControlFlow".to_string()),
-        _ => (format!("OP_UNKNOWN_{:02x}", opcode), "未知操作码".to_string(), "Other".to_string()),
+        0x4f => (
+            "OP_1NEGATE".to_string(),
+            "推入 -1".to_string(),
+            "Constant".to_string(),
+        ),
+        0x76 => (
+            "OP_DUP".to_string(),
+            "复制栈顶元素".to_string(),
+            "Stack".to_string(),
+        ),
+        0x87 => (
+            "OP_EQUAL".to_string(),
+            "比较两个元素是否相等".to_string(),
+            "Logic".to_string(),
+        ),
+        0x88 => (
+            "OP_EQUALVERIFY".to_string(),
+            "比较两个元素是否相等，失败则终止".to_string(),
+            "Logic".to_string(),
+        ),
+        0x69 => (
+            "OP_VERIFY".to_string(),
+            "验证栈顶元素是否为真".to_string(),
+            "Logic".to_string(),
+        ),
+        0xa9 => (
+            "OP_HASH160".to_string(),
+            "计算HASH160（SHA256+RIPEMD160）".to_string(),
+            "Hash".to_string(),
+        ),
+        0xac => (
+            "OP_CHECKSIG".to_string(),
+            "验证ECDSA签名".to_string(),
+            "Signature".to_string(),
+        ),
+        0x6a => (
+            "OP_RETURN".to_string(),
+            "终止执行".to_string(),
+            "ControlFlow".to_string(),
+        ),
+        _ => (
+            format!("OP_UNKNOWN_{:02x}", opcode),
+            "未知操作码".to_string(),
+            "Other".to_string(),
+        ),
     }
 }
 
 /// 验证脚本
 #[wasm_bindgen]
 pub fn validate_script(script_hex: &str) -> Result<ValidationResultWasm, JsValue> {
-    let script = TondiScript::from_hex(script_hex)
-        .map_err(|e| JsValue::from_str(&format!("脚本解析失败: {:?}", e)))?;
+    let script = TondiScript::from_bytes(hex::decode(script_hex).unwrap_or_default());
 
     let mut errors = Vec::new();
     let warnings = Vec::new();
@@ -294,7 +353,7 @@ pub fn validate_script(script_hex: &str) -> Result<ValidationResultWasm, JsValue
     }
 
     // 检查操作码数量
-    let bytes = script.as_bytes();
+    let bytes = script.to_bytes();
     let opcode_count = bytes.iter().filter(|&&b| b > 0x60).count();
     if opcode_count > 201 {
         errors.push("操作码数量超过201个限制".to_string());

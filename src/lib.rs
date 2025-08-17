@@ -4,10 +4,10 @@ extern crate core;
 #[macro_use]
 mod macros;
 
-pub mod utils;
-pub mod signatures;
-pub mod error;
 pub mod data_structures;
+pub mod error;
+pub mod signatures;
+pub mod utils;
 
 #[cfg(feature = "json")]
 pub mod json;
@@ -15,19 +15,17 @@ pub mod json;
 mod wasm;
 
 // 重新导出重要的类型
-pub use crate::data_structures::{Stack, TondiScript, ConditionStack};
+pub use crate::data_structures::{ConditionStack, Stack, StackExt, TondiScript};
 pub use crate::error::{ExecError, Result};
-pub use crate::signatures::{SignatureVerifier, ScriptSignatureVerifier};
-pub use crate::utils::{read_scriptint, scriptint_to_vec, hash160, sha256, sha256d, ripemd160, blake3};
+pub use crate::signatures::{ScriptSignatureVerifier, SignatureVerifier};
+pub use crate::utils::{
+    blake3, hash160, read_scriptint, ripemd160, scriptint_to_vec, sha256, sha256d,
+};
 
-/// 最大操作码数量
-pub const MAX_OPS_PER_SCRIPT: usize = 201;
-
-/// 最大脚本元素大小
-pub const MAX_SCRIPT_ELEMENT_SIZE: usize = 520;
-
-/// 最大栈大小
-pub const MAX_STACK_SIZE: usize = 1000;
+// 从tondi中复用常量，避免重复定义
+pub use tondi_txscript::{
+    MAX_OPS_PER_SCRIPT, MAX_PUB_KEYS_PER_MUTLTISIG, MAX_SCRIPT_ELEMENT_SIZE, MAX_STACK_SIZE,
+};
 
 /// 序列锁定时间禁用标志
 pub const SEQUENCE_LOCKTIME_DISABLE_FLAG: u32 = 1 << 31;
@@ -37,9 +35,6 @@ pub const VALIDATION_WEIGHT_OFFSET: i64 = 50;
 
 /// 每个通过签名的验证权重（Tapscript专用）
 pub const VALIDATION_WEIGHT_PER_SIGOP_PASSED: i64 = 50;
-
-/// 多重签名的最大公钥数量
-pub const MAX_PUBKEYS_PER_MULTISIG: i64 = 20;
 
 /// 实验性功能配置
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,7 +58,7 @@ pub struct Options {
     pub verify_csv: bool,
     /// 验证条件语句使用最小编码
     pub verify_minimal_if: bool,
-    /// 强制执行1000个栈项的限制
+    /// 强制执行栈项的限制
     pub enforce_stack_limit: bool,
     /// 实验性功能
     pub experimental: Experimental,
@@ -108,12 +103,15 @@ pub struct TondiScriptExecutor {
     /// 执行选项
     options: Options,
     /// 执行上下文
+    #[allow(dead_code)]
     ctx: ExecCtx,
-    /// 操作码计数器
-    op_count: usize,
+    /// 操作计数器
+    op_count: i32,
     /// 签名验证器
+    #[allow(dead_code)]
     sig_verifier: SignatureVerifier,
     /// 脚本签名验证器
+    #[allow(dead_code)]
     script_sig_verifier: ScriptSignatureVerifier,
 }
 
@@ -134,7 +132,7 @@ impl TondiScriptExecutor {
 
     /// 执行脚本
     pub fn execute(&mut self, script: &TondiScript) -> Result<()> {
-        let script_bytes = script.as_bytes();
+        let script_bytes = script.to_bytes();
         let mut pc = 0; // 程序计数器
 
         while pc < script_bytes.len() {
@@ -256,7 +254,12 @@ impl TondiScriptExecutor {
             0x8f => self.op_not()?,
             0x90 => self.op_0notequal()?,
 
-            _ => return Err(ExecError::OpcodeError(format!("不支持的操作码: 0x{:02x}", opcode))),
+            _ => {
+                return Err(ExecError::OpcodeError(format!(
+                    "不支持的操作码: 0x{:02x}",
+                    opcode
+                )))
+            }
         }
 
         Ok(())
@@ -289,8 +292,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let top = self.stack.pop()?;
-        let _ = self.stack.pop()?;
+        let top = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let _ = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         self.stack.push(top);
         Ok(())
     }
@@ -299,29 +302,38 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let item = self.stack.get(self.stack.len() - 2).ok_or(ExecError::StackIndexOutOfBounds)?;
+        let item = self
+            .stack
+            .get(self.stack.len() - 2)
+            .ok_or(ExecError::StackIndexOutOfBounds)?;
         self.stack.push(item.to_vec());
         Ok(())
     }
 
     fn op_pick(&mut self) -> Result<()> {
-        let n = self.stack.pop()?;
+        let n = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let index = read_scriptint(&n, 4, self.options.require_minimal)?;
         if index < 0 || index as usize >= self.stack.len() {
             return Err(ExecError::StackIndexOutOfBounds);
         }
-        let item = self.stack.get(index as usize).ok_or(ExecError::StackIndexOutOfBounds)?;
+        let item = self
+            .stack
+            .get(index as usize)
+            .ok_or(ExecError::StackIndexOutOfBounds)?;
         self.stack.push(item.to_vec());
         Ok(())
     }
 
     fn op_roll(&mut self) -> Result<()> {
-        let n = self.stack.pop()?;
+        let n = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let index = read_scriptint(&n, 4, self.options.require_minimal)?;
         if index < 0 || index as usize >= self.stack.len() {
             return Err(ExecError::StackIndexOutOfBounds);
         }
-        let item = self.stack.remove(index as usize)?;
+        let item = self
+            .stack
+            .remove(index as usize)
+            .ok_or(ExecError::StackIndexOutOfBounds)?;
         self.stack.push(item);
         Ok(())
     }
@@ -330,9 +342,9 @@ impl TondiScriptExecutor {
         if self.stack.len() < 3 {
             return Err(ExecError::StackUnderflow);
         }
-        let top = self.stack.pop()?;
-        let second = self.stack.pop()?;
-        let third = self.stack.pop()?;
+        let top = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let second = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let third = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         self.stack.push(second);
         self.stack.push(top);
         self.stack.push(third);
@@ -343,8 +355,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let top = self.stack.pop()?;
-        let second = self.stack.pop()?;
+        let top = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let second = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         self.stack.push(top);
         self.stack.push(second);
         Ok(())
@@ -354,8 +366,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let top = self.stack.pop()?;
-        let second = self.stack.pop()?;
+        let top = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let second = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         self.stack.push(top.clone());
         self.stack.push(second);
         self.stack.push(top);
@@ -364,21 +376,21 @@ impl TondiScriptExecutor {
 
     // 条件语句实现
     fn op_if(&mut self) -> Result<()> {
-        let condition = self.stack.pop()?;
+        let condition = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let should_execute = !condition.is_empty() && condition[0] != 0;
         self.condition_stack.push(should_execute);
         Ok(())
     }
 
     fn op_else(&mut self) -> Result<()> {
-        if let Some(condition) = self.condition_stack.pop() {
+        if let Some(condition) = self.condition_stack.pop().ok() {
             self.condition_stack.push(!condition);
         }
         Ok(())
     }
 
     fn op_endif(&mut self) -> Result<()> {
-        self.condition_stack.pop();
+        let _ = self.condition_stack.pop();
         Ok(())
     }
 
@@ -387,8 +399,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let result = if a == b { 1 } else { 0 };
         self.stack.push(vec![result]);
         Ok(())
@@ -401,7 +413,7 @@ impl TondiScriptExecutor {
     }
 
     fn op_verify(&mut self) -> Result<()> {
-        let item = self.stack.pop()?;
+        let item = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         if item.is_empty() || item[0] == 0 {
             return Err(ExecError::ScriptError("OP_VERIFY失败".to_string()));
         }
@@ -410,14 +422,14 @@ impl TondiScriptExecutor {
 
     // 哈希操作实现
     fn op_ripemd160(&mut self) -> Result<()> {
-        let data = self.stack.pop()?;
+        let data = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let hash = ripemd160(&data);
         self.stack.push(hash);
         Ok(())
     }
 
     fn op_sha1(&mut self) -> Result<()> {
-        let data = self.stack.pop()?;
+        let data = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         // 注意：这里应该使用专门的SHA1实现
         let hash = sha256(&data); // 暂时使用SHA256作为占位符
         self.stack.push(hash);
@@ -425,21 +437,21 @@ impl TondiScriptExecutor {
     }
 
     fn op_sha256(&mut self) -> Result<()> {
-        let data = self.stack.pop()?;
+        let data = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let hash = sha256(&data);
         self.stack.push(hash);
         Ok(())
     }
 
     fn op_hash160(&mut self) -> Result<()> {
-        let data = self.stack.pop()?;
+        let data = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let hash = hash160(&data);
         self.stack.push(hash);
         Ok(())
     }
 
     fn op_hash256(&mut self) -> Result<()> {
-        let data = self.stack.pop()?;
+        let data = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let hash = sha256d(&data);
         self.stack.push(hash);
         Ok(())
@@ -450,8 +462,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let _pubkey_data = self.stack.pop()?;
-        let _signature_data = self.stack.pop()?;
+        let _pubkey_data = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let _signature_data = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
 
         // 这里应该实现实际的签名验证
         // 暂时返回成功
@@ -520,8 +532,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        self.stack.pop()?;
-        self.stack.pop()?;
+        self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         Ok(())
     }
 
@@ -529,8 +541,16 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let second = self.stack.get(self.stack.len() - 2).ok_or(ExecError::StackIndexOutOfBounds)?.to_vec();
-        let first = self.stack.get(self.stack.len() - 1).ok_or(ExecError::StackIndexOutOfBounds)?.to_vec();
+        let second = self
+            .stack
+            .get(self.stack.len() - 2)
+            .ok_or(ExecError::StackIndexOutOfBounds)?
+            .to_vec();
+        let first = self
+            .stack
+            .get(self.stack.len() - 1)
+            .ok_or(ExecError::StackIndexOutOfBounds)?
+            .to_vec();
         self.stack.push(second);
         self.stack.push(first);
         Ok(())
@@ -540,9 +560,21 @@ impl TondiScriptExecutor {
         if self.stack.len() < 3 {
             return Err(ExecError::StackUnderflow);
         }
-        let third = self.stack.get(self.stack.len() - 3).ok_or(ExecError::StackIndexOutOfBounds)?.to_vec();
-        let second = self.stack.get(self.stack.len() - 2).ok_or(ExecError::StackIndexOutOfBounds)?.to_vec();
-        let first = self.stack.get(self.stack.len() - 1).ok_or(ExecError::StackIndexOutOfBounds)?.to_vec();
+        let third = self
+            .stack
+            .get(self.stack.len() - 3)
+            .ok_or(ExecError::StackIndexOutOfBounds)?
+            .to_vec();
+        let second = self
+            .stack
+            .get(self.stack.len() - 2)
+            .ok_or(ExecError::StackIndexOutOfBounds)?
+            .to_vec();
+        let first = self
+            .stack
+            .get(self.stack.len() - 1)
+            .ok_or(ExecError::StackIndexOutOfBounds)?
+            .to_vec();
         self.stack.push(third);
         self.stack.push(second);
         self.stack.push(first);
@@ -553,8 +585,16 @@ impl TondiScriptExecutor {
         if self.stack.len() < 4 {
             return Err(ExecError::StackUnderflow);
         }
-        let fourth = self.stack.get(self.stack.len() - 4).ok_or(ExecError::StackIndexOutOfBounds)?.to_vec();
-        let third = self.stack.get(self.stack.len() - 3).ok_or(ExecError::StackIndexOutOfBounds)?.to_vec();
+        let fourth = self
+            .stack
+            .get(self.stack.len() - 4)
+            .ok_or(ExecError::StackIndexOutOfBounds)?
+            .to_vec();
+        let third = self
+            .stack
+            .get(self.stack.len() - 3)
+            .ok_or(ExecError::StackIndexOutOfBounds)?
+            .to_vec();
         self.stack.push(fourth);
         self.stack.push(third);
         Ok(())
@@ -564,12 +604,12 @@ impl TondiScriptExecutor {
         if self.stack.len() < 6 {
             return Err(ExecError::StackUnderflow);
         }
-        let sixth = self.stack.pop()?;
-        let fifth = self.stack.pop()?;
-        let fourth = self.stack.pop()?;
-        let third = self.stack.pop()?;
-        let second = self.stack.pop()?;
-        let first = self.stack.pop()?;
+        let sixth = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let fifth = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let fourth = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let third = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let second = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let first = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         self.stack.push(fourth);
         self.stack.push(third);
         self.stack.push(second);
@@ -583,10 +623,10 @@ impl TondiScriptExecutor {
         if self.stack.len() < 4 {
             return Err(ExecError::StackUnderflow);
         }
-        let fourth = self.stack.pop()?;
-        let third = self.stack.pop()?;
-        let second = self.stack.pop()?;
-        let first = self.stack.pop()?;
+        let fourth = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let third = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let second = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let first = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         self.stack.push(third);
         self.stack.push(fourth);
         self.stack.push(first);
@@ -599,8 +639,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let result = if !a.is_empty() && !b.is_empty() { 1 } else { 0 };
         self.stack.push(vec![result]);
         Ok(())
@@ -610,8 +650,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let result = if !a.is_empty() || !b.is_empty() { 1 } else { 0 };
         self.stack.push(vec![result]);
         Ok(())
@@ -621,8 +661,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
         let result = if a_num == b_num { 1 } else { 0 };
@@ -640,8 +680,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
         let result = if a_num != b_num { 1 } else { 0 };
@@ -653,8 +693,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
         let result = if a_num < b_num { 1 } else { 0 };
@@ -666,8 +706,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
         let result = if a_num > b_num { 1 } else { 0 };
@@ -679,8 +719,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
         let result = if a_num <= b_num { 1 } else { 0 };
@@ -692,8 +732,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
         let result = if a_num >= b_num { 1 } else { 0 };
@@ -705,8 +745,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
         let result = if a_num < b_num { a_num } else { b_num };
@@ -718,8 +758,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
         let result = if a_num > b_num { a_num } else { b_num };
@@ -732,8 +772,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
         let result = a_num + b_num;
@@ -745,8 +785,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
         let result = a_num - b_num;
@@ -761,8 +801,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
         let result = a_num * b_num;
@@ -777,8 +817,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
         if b_num == 0 {
@@ -793,8 +833,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
         if b_num == 0 {
@@ -809,8 +849,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
         if b_num < 0 || b_num > 31 {
@@ -825,8 +865,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
         if b_num < 0 || b_num > 31 {
@@ -847,7 +887,7 @@ impl TondiScriptExecutor {
         if self.stack.len() < 1 {
             return Err(ExecError::StackUnderflow);
         }
-        let a = self.stack.pop()?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let result = !a_num;
         self.stack.push(scriptint_to_vec(result));
@@ -858,8 +898,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
         let result = a_num & b_num;
@@ -871,8 +911,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
         let result = a_num | b_num;
@@ -884,8 +924,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let b = self.stack.pop()?;
-        let a = self.stack.pop()?;
+        let b = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
         let result = a_num ^ b_num;
@@ -897,7 +937,7 @@ impl TondiScriptExecutor {
         if self.stack.len() < 1 {
             return Err(ExecError::StackUnderflow);
         }
-        let a = self.stack.pop()?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let result = a_num + 1;
         self.stack.push(scriptint_to_vec(result));
@@ -908,7 +948,7 @@ impl TondiScriptExecutor {
         if self.stack.len() < 1 {
             return Err(ExecError::StackUnderflow);
         }
-        let a = self.stack.pop()?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let result = a_num - 1;
         self.stack.push(scriptint_to_vec(result));
@@ -919,7 +959,7 @@ impl TondiScriptExecutor {
         if self.stack.len() < 1 {
             return Err(ExecError::StackUnderflow);
         }
-        let a = self.stack.pop()?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let result = a_num * 2;
         self.stack.push(scriptint_to_vec(result));
@@ -930,7 +970,7 @@ impl TondiScriptExecutor {
         if self.stack.len() < 1 {
             return Err(ExecError::StackUnderflow);
         }
-        let a = self.stack.pop()?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let result = a_num / 2;
         self.stack.push(scriptint_to_vec(result));
@@ -941,7 +981,7 @@ impl TondiScriptExecutor {
         if self.stack.len() < 1 {
             return Err(ExecError::StackUnderflow);
         }
-        let a = self.stack.pop()?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let result = -a_num;
         self.stack.push(scriptint_to_vec(result));
@@ -952,7 +992,7 @@ impl TondiScriptExecutor {
         if self.stack.len() < 1 {
             return Err(ExecError::StackUnderflow);
         }
-        let a = self.stack.pop()?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let result = a_num.abs();
         self.stack.push(scriptint_to_vec(result));
@@ -963,7 +1003,7 @@ impl TondiScriptExecutor {
         if self.stack.len() < 1 {
             return Err(ExecError::StackUnderflow);
         }
-        let a = self.stack.pop()?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let result = if a_num == 0 { 1 } else { 0 };
         self.stack.push(scriptint_to_vec(result));
@@ -974,7 +1014,7 @@ impl TondiScriptExecutor {
         if self.stack.len() < 1 {
             return Err(ExecError::StackUnderflow);
         }
-        let a = self.stack.pop()?;
+        let a = self.stack.pop().ok_or(ExecError::StackUnderflow)?;
         let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
         let result = if a_num != 0 { 1 } else { 0 };
         self.stack.push(scriptint_to_vec(result));
@@ -1002,18 +1042,18 @@ impl TondiScriptExecutor {
     }
 
     /// 获取操作码计数
-    pub fn op_count(&self) -> usize {
+    pub fn op_count(&self) -> i32 {
         self.op_count
     }
 
     /// 检查是否应该执行当前操作码
+    #[allow(dead_code)]
     fn should_execute(&self) -> bool {
         self.condition_stack.top().unwrap_or(true)
     }
 
-
-
     /// 执行单个操作码（内部方法）
+    #[allow(dead_code)]
     fn execute_opcode_internal(&mut self, opcode: u8) -> Result<()> {
         match opcode {
             // 常量操作码
@@ -1104,7 +1144,12 @@ impl TondiScriptExecutor {
             0x8f => self.op_not()?,
             0x90 => self.op_0notequal()?,
 
-            _ => return Err(ExecError::OpcodeError(format!("不支持的操作码: 0x{:02x}", opcode))),
+            _ => {
+                return Err(ExecError::OpcodeError(format!(
+                    "不支持的操作码: 0x{:02x}",
+                    opcode
+                )))
+            }
         }
 
         Ok(())
@@ -1123,10 +1168,12 @@ pub fn execute_script(script: &TondiScript, ctx: ExecCtx, options: Options) -> R
 }
 
 /// 执行脚本并返回结果
-pub fn execute_script_with_result(script: &TondiScript, ctx: ExecCtx, options: Options) -> Result<Stack> {
+pub fn execute_script_with_result(
+    script: &TondiScript,
+    ctx: ExecCtx,
+    options: Options,
+) -> Result<Stack> {
     let mut executor = create_executor(ctx, options);
     executor.execute(script)?;
     Ok(executor.stack().clone())
 }
-
-

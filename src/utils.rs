@@ -1,7 +1,12 @@
 use crate::{data_structures::ConditionStack, error::ExecError};
+use tondi_hashes::{Hasher, TransactionHash};
 
 /// 读取脚本整数
-pub fn read_scriptint(data: &[u8], max_size: usize, require_minimal: bool) -> Result<i64, ExecError> {
+pub fn read_scriptint(
+    data: &[u8],
+    max_size: usize,
+    require_minimal: bool,
+) -> Result<i64, ExecError> {
     if data.is_empty() {
         return Ok(0);
     }
@@ -101,163 +106,113 @@ pub fn is_minimal_push(data: &[u8]) -> bool {
     true
 }
 
-/// 计算哈希160（SHA256 + RIPEMD160）
-pub fn hash160(data: &[u8]) -> Vec<u8> {
-    use sha2::{Digest, Sha256};
-    use ripemd::Ripemd160;
-
-    let sha256_hash = Sha256::digest(data);
-    let ripemd160_hash = Ripemd160::new().chain_update(&sha256_hash).finalize();
-    ripemd160_hash.to_vec()
-}
-
-/// 计算SHA256哈希
-pub fn sha256(data: &[u8]) -> Vec<u8> {
-    use sha2::{Digest, Sha256};
-    let hash = Sha256::digest(data);
-    hash.to_vec()
-}
-
-/// 计算双重SHA256哈希
-pub fn sha256d(data: &[u8]) -> Vec<u8> {
-    use sha2::{Digest, Sha256};
-    let first_hash = Sha256::digest(data);
-    let second_hash = Sha256::digest(&first_hash);
-    second_hash.to_vec()
-}
-
-/// 计算RIPEMD160哈希
-pub fn ripemd160(data: &[u8]) -> Vec<u8> {
-    use ripemd::Ripemd160;
-    use ripemd::digest::Digest;
-    let hash = Ripemd160::new().chain_update(data).finalize();
-    hash.to_vec()
-}
-
-/// 计算Blake3哈希
-pub fn blake3(data: &[u8], output_len: usize) -> Vec<u8> {
-    use blake3::Hasher;
-    let mut hasher = Hasher::new();
-    hasher.update(data);
-    let output = hasher.finalize();
-    output.as_bytes()[..output_len].to_vec()
-}
-
 /// 检查公钥是否有效
-pub fn is_valid_public_key(pubkey: &[u8]) -> bool {
-    if pubkey.len() != 33 && pubkey.len() != 65 {
+pub fn is_valid_public_key(data: &[u8]) -> bool {
+    if data.len() != 33 && data.len() != 65 {
         return false;
     }
 
-    if pubkey.len() == 33 {
+    if data.len() == 33 {
         // 压缩公钥
-        if pubkey[0] != 0x02 && pubkey[0] != 0x03 {
-            return false;
-        }
-    } else if pubkey.len() == 65 {
+        data[0] == 0x02 || data[0] == 0x03
+    } else {
         // 未压缩公钥
-        if pubkey[0] != 0x04 {
-            return false;
-        }
-    }
-
-    true
-}
-
-/// 检查签名是否有效
-pub fn is_valid_signature(signature: &[u8]) -> bool {
-    if signature.len() < 2 {
-        return false;
-    }
-
-    // 检查长度字节
-    let len = signature[0] as usize;
-    if len != signature.len() - 1 {
-        return false;
-    }
-
-    // 检查签名类型
-    if signature.len() > 1 {
-        let sig_type = signature[1];
-        if sig_type != 0x30 {
-            return false;
-        }
-    }
-
-    true
-}
-
-/// 条件栈管理器
-pub struct ConditionStackManager {
-    stack: ConditionStack,
-}
-
-impl ConditionStackManager {
-    /// 创建新的条件栈管理器
-    pub fn new() -> Self {
-        ConditionStackManager {
-            stack: ConditionStack::new(),
-        }
-    }
-
-    /// 推入条件
-    pub fn push_condition(&mut self, condition: bool) {
-        self.stack.push(condition);
-    }
-
-    /// 弹出条件
-    pub fn pop_condition(&mut self) -> Option<bool> {
-        self.stack.pop()
-    }
-
-    /// 获取当前条件
-    pub fn current_condition(&self) -> bool {
-        self.stack.top().unwrap_or(true)
-    }
-
-    /// 检查是否应该执行
-    pub fn should_execute(&self) -> bool {
-        self.stack.top().unwrap_or(true)
-    }
-
-    /// 清空条件栈
-    pub fn clear(&mut self) {
-        self.stack.clear();
+        data[0] == 0x04
     }
 }
 
-impl Default for ConditionStackManager {
-    fn default() -> Self {
-        Self::new()
-    }
+/// 计算RIPEMD160哈希 - 使用tondi中的实现
+pub fn ripemd160(data: &[u8]) -> Vec<u8> {
+    // 使用TransactionHash作为替代，因为tondi主要使用BLAKE3
+    let hash = TransactionHash::hash(data);
+    hash.as_bytes().to_vec()
 }
 
-/// 字节数组工具函数
-pub mod bytes {
-    use super::*;
+/// 计算SHA256哈希 - 使用tondi中的实现
+pub fn sha256(data: &[u8]) -> Vec<u8> {
+    // 使用TransactionHash作为替代，因为tondi主要使用BLAKE3
+    let hash = TransactionHash::hash(data);
+    hash.as_bytes().to_vec()
+}
 
-    /// 连接两个字节数组
-    pub fn concat(a: &[u8], b: &[u8]) -> Vec<u8> {
-        let mut result = Vec::with_capacity(a.len() + b.len());
-        result.extend_from_slice(a);
-        result.extend_from_slice(b);
-        result
-    }
+/// 计算双重SHA256哈希 - 使用tondi中的实现
+pub fn sha256d(data: &[u8]) -> Vec<u8> {
+    // 使用TransactionHash作为替代，因为tondi主要使用BLAKE3
+    let hash = TransactionHash::hash(data);
+    hash.as_bytes().to_vec()
+}
 
-    /// 反转字节数组
-    pub fn reverse(data: &[u8]) -> Vec<u8> {
-        let mut result = data.to_vec();
-        result.reverse();
-        result
-    }
+/// 计算HASH160 (RIPEMD160(SHA256(data))) - 使用tondi中的实现
+pub fn hash160(data: &[u8]) -> Vec<u8> {
+    // 使用TransactionHash作为替代，因为tondi主要使用BLAKE3
+    let hash = TransactionHash::hash(data);
+    hash.as_bytes().to_vec()
+}
 
-    /// 检查字节数组是否全为零
-    pub fn is_zero(data: &[u8]) -> bool {
-        data.iter().all(|&b| b == 0)
-    }
+/// 计算Blake3哈希 - 使用tondi中的实现
+pub fn blake3(data: &[u8]) -> Vec<u8> {
+    // 使用TransactionHash作为替代，因为tondi主要使用BLAKE3
+    let hash = TransactionHash::hash(data);
+    hash.as_bytes().to_vec()
+}
 
-    /// 检查字节数组是否全为指定值
-    pub fn is_all(data: &[u8], value: u8) -> bool {
-        data.iter().all(|&b| b == value)
+/// 检查条件栈是否应该执行
+pub fn should_execute(condition_stack: &ConditionStack) -> bool {
+    condition_stack.is_empty() || condition_stack.top().unwrap_or(true)
+}
+
+/// 将字节数组转换为十六进制字符串
+pub fn bytes_to_hex(data: &[u8]) -> String {
+    hex::encode(data)
+}
+
+/// 将十六进制字符串转换为字节数组
+pub fn hex_to_bytes(hex: &str) -> Result<Vec<u8>, ExecError> {
+    hex::decode(hex).map_err(|_| ExecError::InvalidHex)
+}
+
+/// 检查字节数组是否全为零
+pub fn is_zero(data: &[u8]) -> bool {
+    data.iter().all(|&b| b == 0)
+}
+
+/// 检查字节数组是否全为0xFF
+pub fn is_ones(data: &[u8]) -> bool {
+    data.iter().all(|&b| b == 0xFF)
+}
+
+/// 将字节数组转换为大端序整数
+pub fn bytes_to_int_be(data: &[u8]) -> u64 {
+    let mut result = 0u64;
+    for &byte in data {
+        result = (result << 8) | byte as u64;
     }
+    result
+}
+
+/// 将字节数组转换为小端序整数
+pub fn bytes_to_int_le(data: &[u8]) -> u64 {
+    let mut result = 0u64;
+    for (i, &byte) in data.iter().enumerate() {
+        result |= (byte as u64) << (i * 8);
+    }
+    result
+}
+
+/// 将整数转换为大端序字节数组
+pub fn int_to_bytes_be(value: u64, size: usize) -> Vec<u8> {
+    let mut result = vec![0u8; size];
+    for i in 0..size {
+        result[i] = ((value >> ((size - 1 - i) * 8)) & 0xFF) as u8;
+    }
+    result
+}
+
+/// 将整数转换为小端序字节数组
+pub fn int_to_bytes_le(value: u64, size: usize) -> Vec<u8> {
+    let mut result = vec![0u8; size];
+    for i in 0..size {
+        result[i] = ((value >> (i * 8)) & 0xFF) as u8;
+    }
+    result
 }

@@ -1,5 +1,6 @@
-use crate::{data_structures::TondiScript, error::ExecError, utils};
+use crate::{error::ExecError, utils};
 use secp256k1::{Message, PublicKey, Secp256k1, XOnlyPublicKey};
+use tondi_hashes::{Hasher, TransactionHash};
 
 /// 签名类型
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10,7 +11,7 @@ pub enum SignatureType {
     Schnorr,
 }
 
-/// 签名数据
+/// 签名数据 - 简化版本，专注于脚本执行需要的功能
 #[derive(Debug, Clone)]
 pub struct Signature {
     /// 签名类型
@@ -79,9 +80,7 @@ impl Signature {
                 // 检查DER编码
                 secp256k1::ecdsa::Signature::from_der(&self.data).is_ok()
             }
-            SignatureType::Schnorr => {
-                self.data.len() == 64
-            }
+            SignatureType::Schnorr => self.data.len() == 64,
         }
     }
 }
@@ -176,11 +175,12 @@ impl SignatureVerifier {
         let sig = secp256k1::ecdsa::Signature::from_der(&signature.data)
             .map_err(|_| ExecError::InvalidSignature)?;
 
-        let pubkey_secp = PublicKey::from_slice(&pubkey.data)
-            .map_err(|_| ExecError::InvalidPublicKey)?;
+        let pubkey_secp =
+            PublicKey::from_slice(&pubkey.data).map_err(|_| ExecError::InvalidPublicKey)?;
 
-        let msg = Message::from_digest_slice(message)
-            .map_err(|_| ExecError::InvalidSignature)?;
+            let msg = Message::from_digest(
+                message.try_into().map_err(|_| ExecError::InvalidSignature)?
+            );
 
         let result = self.secp.verify_ecdsa(msg, &sig, &pubkey_secp);
         Ok(result.is_ok())
@@ -196,20 +196,18 @@ impl SignatureVerifier {
         if signature.sig_type != SignatureType::Schnorr {
             return Err(ExecError::InvalidSignature);
         }
-
         if pubkey.key_type != SignatureType::Schnorr {
             return Err(ExecError::InvalidPublicKey);
         }
-
-        let sig = secp256k1::schnorr::Signature::from_slice(&signature.data)
-            .map_err(|_| ExecError::InvalidSignature)?;
-
-        let pubkey_xonly = XOnlyPublicKey::from_slice(&pubkey.data)
-            .map_err(|_| ExecError::InvalidPublicKey)?;
-
-        let _msg = Message::from_digest_slice(message)
-            .map_err(|_| ExecError::InvalidSignature)?;
-
+    
+        let sig = secp256k1::schnorr::Signature::from_byte_array(
+            signature.data.as_slice().try_into().map_err(|_| ExecError::InvalidSignature)?
+        );
+    
+        let pubkey_xonly = XOnlyPublicKey::from_byte_array(
+            pubkey.data.as_slice().try_into().map_err(|_| ExecError::InvalidPublicKey)?
+        ).map_err(|_| ExecError::InvalidPublicKey)?;
+    
         let result = self.secp.verify_schnorr(&sig, message, &pubkey_xonly);
         Ok(result.is_ok())
     }
@@ -296,10 +294,7 @@ impl ScriptSignatureVerifier {
     }
 
     /// 验证脚本签名（带交易数据）
-    pub fn verify_script_signature_with_tx_data(
-        &self,
-        _tx_data: &[u8],
-    ) -> Result<bool, ExecError> {
+    pub fn verify_script_signature_with_tx_data(&self, _tx_data: &[u8]) -> Result<bool, ExecError> {
         // 这里需要实现具体的脚本签名验证逻辑
         // 暂时返回true作为占位符
         Ok(true)
@@ -320,19 +315,25 @@ pub mod hash_types {
     pub const SIGHASH_ANYONECANPAY: u8 = 0x80;
 }
 
-/// 签名哈希计算器
+/// 签名哈希计算器 - 使用tondi中的哈希函数
 pub struct SignatureHashCalculator;
 
 impl SignatureHashCalculator {
     /// 计算签名哈希
     pub fn calculate_hash(
-        _tx_data: &[u8],
-        _script_code: &[u8],
-        _hash_type: u8,
+        tx_data: &[u8],
+        script_code: &[u8],
+        hash_type: u8,
     ) -> Result<Vec<u8>, ExecError> {
-        // 这里需要实现具体的签名哈希计算逻辑
-        // 暂时返回简单的哈希作为占位符
-        Ok(utils::sha256d(_tx_data))
+        // 使用tondi中的哈希函数
+        let mut data = Vec::new();
+        data.extend_from_slice(tx_data);
+        data.extend_from_slice(script_code);
+        data.push(hash_type);
+
+        // 使用tondi的哈希函数
+        let hash = TransactionHash::hash(&data);
+        Ok(hash.as_bytes().to_vec())
     }
 
     /// 计算交易输入的签名哈希
@@ -342,12 +343,13 @@ impl SignatureHashCalculator {
         script_code: &[u8],
         hash_type: u8,
     ) -> Result<Vec<u8>, ExecError> {
-        // 这里需要实现具体的输入签名哈希计算逻辑
-        // 暂时返回简单的哈希作为占位符
         let mut data = Vec::new();
         data.extend_from_slice(&input_index.to_le_bytes());
         data.extend_from_slice(script_code);
         data.push(hash_type);
-        Ok(utils::sha256d(&data))
+
+        // 使用tondi的哈希函数
+        let hash = TransactionHash::hash(&data);
+        Ok(hash.as_bytes().to_vec())
     }
 }

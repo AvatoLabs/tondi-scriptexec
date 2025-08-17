@@ -1,50 +1,153 @@
 use crate::ExecError;
 
 /// Tondi脚本执行器使用的栈结构
-#[derive(Debug, Clone)]
 pub struct Stack {
     data: Vec<Vec<u8>>,
 }
 
 impl Stack {
-    /// 创建新的空栈
     pub fn new() -> Self {
         Stack { data: Vec::new() }
     }
 
-    /// 从现有数据创建栈
-    pub fn from_data(data: Vec<Vec<u8>>) -> Self {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Stack {
+            data: Vec::with_capacity(capacity),
+        }
+    }
+
+    pub fn from_vec(data: Vec<Vec<u8>>) -> Self {
         Stack { data }
     }
 
-    /// 获取栈顶元素
-    pub fn top(&self) -> Option<&[u8]> {
+    pub fn into_vec(self) -> Vec<Vec<u8>> {
+        self.data
+    }
+
+    pub fn as_slice(&self) -> &[Vec<u8>] {
+        &self.data
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [Vec<u8>] {
+        &mut self.data
+    }
+}
+
+impl Default for Stack {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Clone for Stack {
+    fn clone(&self) -> Self {
+        Stack {
+            data: self.data.clone(),
+        }
+    }
+}
+
+impl std::ops::Deref for Stack {
+    type Target = [Vec<u8>];
+
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+impl std::ops::DerefMut for Stack {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
+    }
+}
+
+// 为Stack类型添加扩展方法
+pub trait StackExt {
+    fn top(&self) -> Option<&[u8]>;
+    fn pop(&mut self) -> Option<Vec<u8>>;
+    fn push(&mut self, item: Vec<u8>);
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool;
+    fn get(&self, index: usize) -> Option<&[u8]>;
+    fn remove(&mut self, index: usize) -> Option<Vec<u8>>;
+    fn insert(&mut self, index: usize, item: Vec<u8>);
+    fn clear(&mut self);
+}
+
+impl StackExt for Stack {
+    fn top(&self) -> Option<&[u8]> {
         self.data.last().map(|v| v.as_slice())
     }
 
-    /// 获取栈顶元素的可变引用
-    pub fn top_mut(&mut self) -> Option<&mut Vec<u8>> {
-        self.data.last_mut()
-    }
-
-    /// 弹出栈顶元素
-    pub fn pop(&mut self) -> Result<Vec<u8>, ExecError> {
-        self.data.pop().ok_or(ExecError::StackUnderflow)
-    }
-
-    /// 弹出栈顶元素，如果为空则返回默认值
-    pub fn pop_or(&mut self, default: Vec<u8>) -> Vec<u8> {
-        self.data.pop().unwrap_or(default)
-    }
-
-    /// 弹出栈顶元素，如果为空则返回None
-    pub fn pop_opt(&mut self) -> Option<Vec<u8>> {
+    fn pop(&mut self) -> Option<Vec<u8>> {
         self.data.pop()
     }
 
+    fn push(&mut self, item: Vec<u8>) {
+        self.data.push(item);
+    }
+
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    fn get(&self, index: usize) -> Option<&[u8]> {
+        self.data.get(index).map(|v| v.as_ref())
+    }
+
+    fn remove(&mut self, index: usize) -> Option<Vec<u8>> {
+        if index < self.data.len() {
+            Some(self.data.swap_remove(index))
+        } else {
+            None
+        }
+    }
+
+    fn insert(&mut self, index: usize, item: Vec<u8>) {
+        if index <= self.data.len() {
+            self.data.insert(index, item);
+        }
+    }
+
+    fn clear(&mut self) {
+        self.data.clear()
+    }
+}
+
+/// 条件栈结构
+#[derive(Debug, Clone)]
+pub struct ConditionStack {
+    data: Vec<bool>,
+}
+
+impl ConditionStack {
+    /// 创建新的空条件栈
+    pub fn new() -> Self {
+        ConditionStack { data: Vec::new() }
+    }
+
+    /// 从现有数据创建条件栈
+    pub fn from_data(data: Vec<bool>) -> Self {
+        ConditionStack { data }
+    }
+
+    /// 获取栈顶元素
+    pub fn top(&self) -> Option<bool> {
+        self.data.last().copied()
+    }
+
+    /// 弹出栈顶元素
+    pub fn pop(&mut self) -> Result<bool, ExecError> {
+        self.data.pop().ok_or(ExecError::StackUnderflow)
+    }
+
     /// 将元素推入栈顶
-    pub fn push(&mut self, data: Vec<u8>) {
-        self.data.push(data);
+    pub fn push(&mut self, value: bool) {
+        self.data.push(value);
     }
 
     /// 获取栈的大小
@@ -58,30 +161,8 @@ impl Stack {
     }
 
     /// 获取栈中指定位置的元素
-    pub fn get(&self, index: usize) -> Option<&[u8]> {
-        self.data.get(index).map(|v| v.as_slice())
-    }
-
-    /// 获取栈中指定位置元素的可变引用
-    pub fn get_mut(&mut self, index: usize) -> Option<&mut Vec<u8>> {
-        self.data.get_mut(index)
-    }
-
-    /// 在指定位置插入元素
-    pub fn insert(&mut self, index: usize, data: Vec<u8>) -> Result<(), ExecError> {
-        if index > self.data.len() {
-            return Err(ExecError::StackIndexOutOfBounds);
-        }
-        self.data.insert(index, data);
-        Ok(())
-    }
-
-    /// 移除指定位置的元素
-    pub fn remove(&mut self, index: usize) -> Result<Vec<u8>, ExecError> {
-        if index >= self.data.len() {
-            return Err(ExecError::StackIndexOutOfBounds);
-        }
-        Ok(self.data.remove(index))
+    pub fn get(&self, index: usize) -> Option<bool> {
+        self.data.get(index).copied()
     }
 
     /// 清空栈
@@ -90,97 +171,121 @@ impl Stack {
     }
 
     /// 获取栈的引用
-    pub fn as_ref(&self) -> &[Vec<u8>] {
+    pub fn as_ref(&self) -> &[bool] {
         &self.data
     }
 
     /// 获取栈的可变引用
-    pub fn as_mut(&mut self) -> &mut [Vec<u8>] {
+    pub fn as_mut(&mut self) -> &mut [bool] {
         &mut self.data
     }
-
-    /// 将栈转换为Vec
-    pub fn into_vec(self) -> Vec<Vec<u8>> {
-        self.data
-    }
-
-    /// 反转栈中元素的顺序
-    pub fn reverse(&mut self) {
-        self.data.reverse();
-    }
-
-    /// 交换栈顶两个元素
-    pub fn swap_top(&mut self) -> Result<(), ExecError> {
-        if self.data.len() < 2 {
-            return Err(ExecError::StackUnderflow);
-        }
-        let len = self.data.len();
-        self.data.swap(len - 1, len - 2);
-        Ok(())
-    }
-
-    /// 复制栈顶元素
-    pub fn dup_top(&mut self) -> Result<(), ExecError> {
-        let top = self.top().ok_or(ExecError::StackUnderflow)?;
-        self.push(top.to_vec());
-        Ok(())
-    }
-
-    /// 删除栈顶元素
-    pub fn drop_top(&mut self) -> Result<(), ExecError> {
-        self.pop()?;
-        Ok(())
-    }
 }
 
-impl Default for Stack {
+impl Default for ConditionStack {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl From<Vec<Vec<u8>>> for Stack {
-    fn from(data: Vec<Vec<u8>>) -> Self {
-        Stack { data }
-    }
-}
-
-impl From<Vec<u8>> for Stack {
-    fn from(data: Vec<u8>) -> Self {
-        Stack { data: vec![data] }
-    }
-}
-
-impl From<&[u8]> for Stack {
-    fn from(data: &[u8]) -> Self {
-        Stack { data: vec![data.to_vec()] }
     }
 }
 
 /// Tondi脚本结构
 #[derive(Debug, Clone)]
 pub struct TondiScript {
-    data: Vec<u8>,
+    /// 脚本数据
+    pub data: Vec<u8>,
+    /// 脚本类型
+    pub script_type: ScriptType,
+    /// 脚本版本
+    pub version: u16,
+}
+
+/// 脚本类型
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScriptType {
+    /// 支付到公钥哈希
+    PayToPubKeyHash,
+    /// 支付到脚本哈希
+    PayToScriptHash,
+    /// 多重签名
+    MultiSig,
+    /// 空输出
+    NullData,
+    /// 支付到公钥
+    PayToPubKey,
+    /// 支付到见证公钥哈希
+    PayToWitnessPubKeyHash,
+    /// 支付到见证脚本哈希
+    PayToWitnessScriptHash,
+    /// Taproot输出
+    Taproot,
+    /// 未知类型
+    Unknown,
 }
 
 impl TondiScript {
+    /// 创建新的脚本
+    pub fn new(data: Vec<u8>, script_type: ScriptType, version: u16) -> Self {
+        TondiScript {
+            data,
+            script_type,
+            version,
+        }
+    }
+
     /// 从字节数据创建脚本
-    pub fn new(data: Vec<u8>) -> Self {
-        TondiScript { data }
+    pub fn from_bytes(data: Vec<u8>) -> Self {
+        let script_type = Self::detect_script_type(&data);
+        TondiScript {
+            data,
+            script_type,
+            version: 0,
+        }
     }
 
-    /// 从十六进制字符串创建脚本
-    pub fn from_hex(hex: &str) -> Result<Self, ExecError> {
-        let data = hex::decode(hex).map_err(|_| ExecError::InvalidHex)?;
-        Ok(TondiScript { data })
+    /// 检测脚本类型
+    fn detect_script_type(data: &[u8]) -> ScriptType {
+        if data.is_empty() {
+            return ScriptType::Unknown;
+        }
+
+        // 简单的脚本类型检测逻辑
+        if data.len() == 25
+            && data[0] == 0x76
+            && data[1] == 0xA9
+            && data[2] == 0x14
+            && data[23] == 0x88
+            && data[24] == 0xAC
+        {
+            ScriptType::PayToPubKeyHash
+        } else if data.len() == 23 && data[0] == 0xA9 && data[1] == 0x14 && data[22] == 0x87 {
+            ScriptType::PayToScriptHash
+        } else if data.len() >= 3 && data[0] == 0x51 && data[data.len() - 1] == 0xAE {
+            ScriptType::MultiSig
+        } else if data.len() >= 2 && data[0] == 0x6A {
+            ScriptType::NullData
+        } else if data.len() >= 33 && data.len() <= 65 && (data[0] == 0x21 || data[0] == 0x41) {
+            ScriptType::PayToPubKey
+        } else if data.len() == 22 && data[0] == 0x00 && data[1] == 0x14 {
+            ScriptType::PayToWitnessPubKeyHash
+        } else if data.len() == 34 && data[0] == 0x00 && data[1] == 0x20 {
+            ScriptType::PayToWitnessScriptHash
+        } else if data.len() == 34 && data[0] == 0x51 && data[1] == 0x20 {
+            ScriptType::Taproot
+        } else {
+            ScriptType::Unknown
+        }
     }
 
-    /// 获取脚本的字节数据
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.data
+    /// 获取脚本的字节表示
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.data.clone()
     }
 
-    /// 获取脚本的长度
+    /// 检查脚本是否有效
+    pub fn is_valid(&self) -> bool {
+        !self.data.is_empty() && self.data.len() <= crate::MAX_SCRIPT_ELEMENT_SIZE
+    }
+
+    /// 获取脚本长度
     pub fn len(&self) -> usize {
         self.data.len()
     }
@@ -189,22 +294,11 @@ impl TondiScript {
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
-
-    /// 将脚本转换为Vec<u8>
-    pub fn into_vec(self) -> Vec<u8> {
-        self.data
-    }
 }
 
-impl From<Vec<u8>> for TondiScript {
-    fn from(data: Vec<u8>) -> Self {
-        TondiScript { data }
-    }
-}
-
-impl From<&[u8]> for TondiScript {
-    fn from(data: &[u8]) -> Self {
-        TondiScript { data: data.to_vec() }
+impl Default for TondiScript {
+    fn default() -> Self {
+        Self::new(Vec::new(), ScriptType::Unknown, 0)
     }
 }
 
@@ -279,54 +373,5 @@ impl TondiTransaction {
     /// 添加输出
     pub fn add_output(&mut self, output: TondiTxOut) {
         self.outputs.push(output);
-    }
-}
-
-/// 条件栈，用于处理条件执行
-#[derive(Debug, Clone)]
-pub struct ConditionStack {
-    stack: Vec<bool>,
-}
-
-impl ConditionStack {
-    /// 创建新的条件栈
-    pub fn new() -> Self {
-        ConditionStack { stack: Vec::new() }
-    }
-
-    /// 推入条件
-    pub fn push(&mut self, condition: bool) {
-        self.stack.push(condition);
-    }
-
-    /// 弹出条件
-    pub fn pop(&mut self) -> Option<bool> {
-        self.stack.pop()
-    }
-
-    /// 获取栈顶条件
-    pub fn top(&self) -> Option<bool> {
-        self.stack.last().copied()
-    }
-
-    /// 检查栈是否为空
-    pub fn is_empty(&self) -> bool {
-        self.stack.is_empty()
-    }
-
-    /// 获取栈的大小
-    pub fn len(&self) -> usize {
-        self.stack.len()
-    }
-
-    /// 清空栈
-    pub fn clear(&mut self) {
-        self.stack.clear();
-    }
-}
-
-impl Default for ConditionStack {
-    fn default() -> Self {
-        Self::new()
     }
 }

@@ -23,6 +23,11 @@ cli = ["json", "clap"]
 wasm = ["json", "wasm-bindgen", "serde-wasm-bindgen", "console_error_panic_hook", "getrandom/js"]
 
 [dependencies]
+# Tondi dependencies - 复用现有代码
+tondi-txscript = { path = "../Tondi/crypto/txscript" }
+tondi-hashes = { path = "../Tondi/crypto/hashes" }
+tondi-consensus-core = { path = "../Tondi/consensus/core" }
+
 # Core dependencies
 serde = { version = "1.0", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
@@ -37,10 +42,6 @@ serde-wasm-bindgen = { version = "0.6.1", optional = true }
 console_error_panic_hook = { version = "0.1.7", optional = true }
 getrandom = { version = "0.2", optional = true }
 
-# Crypto dependencies (replacing bitcoin with tondi equivalents)
+# Crypto dependencies - 从tondi中复用，移除重复
 secp256k1 = "0.31.0"
-sha2 = "0.10.0"
-ripemd = "0.1.0"
-blake2 = "0.10.0"
-blake3 = "1.8.2"
 hex = "0.4"

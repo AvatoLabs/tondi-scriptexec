@@ -137,36 +137,12 @@ pub enum StackItemType {
 /// 将栈转换为JSON友好的格式
 pub fn stack_to_json(stack: &Stack) -> StackInfo {
     let items: Vec<StackItem> = stack
-        .as_ref()
         .iter()
-        .map(|item| {
-            let hex = hex::encode(item);
-            let data_type = classify_stack_item(item);
-            let data = match data_type {
-                StackItemType::Empty => "".to_string(),
-                StackItemType::Number => {
-                    if let Ok(num) = crate::utils::read_scriptint(item, 4, true) {
-                        num.to_string()
-                    } else {
-                        hex.clone()
-                    }
-                }
-                StackItemType::String => {
-                    if item.iter().all(|&b| b.is_ascii_graphic() || b.is_ascii_whitespace()) {
-                        String::from_utf8_lossy(item).to_string()
-                    } else {
-                        hex.clone()
-                    }
-                }
-                _ => hex.clone(),
-            };
-
-            StackItem {
-                data,
-                data_type,
-                hex,
-                length: item.len(),
-            }
+        .map(|item| StackItem {
+            data: hex::encode(item),
+            data_type: classify_stack_item(item),
+            hex: hex::encode(item),
+            length: item.len(),
         })
         .collect();
 
@@ -178,13 +154,13 @@ pub fn stack_to_json(stack: &Stack) -> StackInfo {
 
 /// 将脚本转换为JSON友好的格式
 pub fn script_to_json(script: &TondiScript) -> ScriptInfo {
-    let bytes = script.as_bytes();
-    let opcodes = parse_opcodes(bytes);
+    let bytes = script.to_bytes();
+    let opcodes = parse_opcodes(&bytes);
 
     ScriptInfo {
         length: script.len(),
-        hex: hex::encode(bytes),
-        bytes: bytes.to_vec(),
+        hex: hex::encode(&bytes),
+        bytes: bytes,
         opcodes,
     }
 }
@@ -231,53 +207,173 @@ fn parse_opcodes(script_bytes: &[u8]) -> Vec<OpcodeInfo> {
 fn get_opcode_info(opcode: u8) -> (String, String, OpcodeType) {
     match opcode {
         // 常量
-        0x00 => ("OP_0".to_string(), "推入空数据".to_string(), OpcodeType::Constant),
+        0x00 => (
+            "OP_0".to_string(),
+            "推入空数据".to_string(),
+            OpcodeType::Constant,
+        ),
         0x51..=0x60 => {
             let n = opcode - 0x50;
-            (format!("OP_{}", n), format!("推入数字 {}", n), OpcodeType::Constant)
+            (
+                format!("OP_{}", n),
+                format!("推入数字 {}", n),
+                OpcodeType::Constant,
+            )
         }
-        0x4f => ("OP_1NEGATE".to_string(), "推入 -1".to_string(), OpcodeType::Constant),
+        0x4f => (
+            "OP_1NEGATE".to_string(),
+            "推入 -1".to_string(),
+            OpcodeType::Constant,
+        ),
 
         // 栈操作
-        0x76 => ("OP_DUP".to_string(), "复制栈顶元素".to_string(), OpcodeType::Stack),
-        0x77 => ("OP_NIP".to_string(), "删除栈顶第二个元素".to_string(), OpcodeType::Stack),
-        0x78 => ("OP_OVER".to_string(), "复制栈顶第二个元素到栈顶".to_string(), OpcodeType::Stack),
-        0x79 => ("OP_PICK".to_string(), "复制栈中指定位置的元素到栈顶".to_string(), OpcodeType::Stack),
-        0x7a => ("OP_ROLL".to_string(), "移动栈中指定位置的元素到栈顶".to_string(), OpcodeType::Stack),
-        0x7b => ("OP_ROT".to_string(), "旋转栈顶三个元素".to_string(), OpcodeType::Stack),
-        0x7c => ("OP_SWAP".to_string(), "交换栈顶两个元素".to_string(), OpcodeType::Stack),
-        0x7d => ("OP_TUCK".to_string(), "复制栈顶元素到栈顶第二个位置".to_string(), OpcodeType::Stack),
+        0x76 => (
+            "OP_DUP".to_string(),
+            "复制栈顶元素".to_string(),
+            OpcodeType::Stack,
+        ),
+        0x77 => (
+            "OP_NIP".to_string(),
+            "删除栈顶第二个元素".to_string(),
+            OpcodeType::Stack,
+        ),
+        0x78 => (
+            "OP_OVER".to_string(),
+            "复制栈顶第二个元素到栈顶".to_string(),
+            OpcodeType::Stack,
+        ),
+        0x79 => (
+            "OP_PICK".to_string(),
+            "复制栈中指定位置的元素到栈顶".to_string(),
+            OpcodeType::Stack,
+        ),
+        0x7a => (
+            "OP_ROLL".to_string(),
+            "移动栈中指定位置的元素到栈顶".to_string(),
+            OpcodeType::Stack,
+        ),
+        0x7b => (
+            "OP_ROT".to_string(),
+            "旋转栈顶三个元素".to_string(),
+            OpcodeType::Stack,
+        ),
+        0x7c => (
+            "OP_SWAP".to_string(),
+            "交换栈顶两个元素".to_string(),
+            OpcodeType::Stack,
+        ),
+        0x7d => (
+            "OP_TUCK".to_string(),
+            "复制栈顶元素到栈顶第二个位置".to_string(),
+            OpcodeType::Stack,
+        ),
 
         // 逻辑操作
-        0x87 => ("OP_EQUAL".to_string(), "比较两个元素是否相等".to_string(), OpcodeType::Logic),
-        0x88 => ("OP_EQUALVERIFY".to_string(), "比较两个元素是否相等，失败则终止".to_string(), OpcodeType::Logic),
-        0x69 => ("OP_VERIFY".to_string(), "验证栈顶元素是否为真".to_string(), OpcodeType::Logic),
+        0x87 => (
+            "OP_EQUAL".to_string(),
+            "比较两个元素是否相等".to_string(),
+            OpcodeType::Logic,
+        ),
+        0x88 => (
+            "OP_EQUALVERIFY".to_string(),
+            "比较两个元素是否相等，失败则终止".to_string(),
+            OpcodeType::Logic,
+        ),
+        0x69 => (
+            "OP_VERIFY".to_string(),
+            "验证栈顶元素是否为真".to_string(),
+            OpcodeType::Logic,
+        ),
 
         // 哈希操作
-        0xa6 => ("OP_RIPEMD160".to_string(), "计算RIPEMD160哈希".to_string(), OpcodeType::Hash),
-        0xa7 => ("OP_SHA1".to_string(), "计算SHA1哈希".to_string(), OpcodeType::Hash),
-        0xa8 => ("OP_SHA256".to_string(), "计算SHA256哈希".to_string(), OpcodeType::Hash),
-        0xa9 => ("OP_HASH160".to_string(), "计算HASH160（SHA256+RIPEMD160）".to_string(), OpcodeType::Hash),
-        0xaa => ("OP_HASH256".to_string(), "计算双重SHA256哈希".to_string(), OpcodeType::Hash),
+        0xa6 => (
+            "OP_RIPEMD160".to_string(),
+            "计算RIPEMD160哈希".to_string(),
+            OpcodeType::Hash,
+        ),
+        0xa7 => (
+            "OP_SHA1".to_string(),
+            "计算SHA1哈希".to_string(),
+            OpcodeType::Hash,
+        ),
+        0xa8 => (
+            "OP_SHA256".to_string(),
+            "计算SHA256哈希".to_string(),
+            OpcodeType::Hash,
+        ),
+        0xa9 => (
+            "OP_HASH160".to_string(),
+            "计算HASH160（SHA256+RIPEMD160）".to_string(),
+            OpcodeType::Hash,
+        ),
+        0xaa => (
+            "OP_HASH256".to_string(),
+            "计算双重SHA256哈希".to_string(),
+            OpcodeType::Hash,
+        ),
 
         // 签名操作
-        0xac => ("OP_CHECKSIG".to_string(), "验证ECDSA签名".to_string(), OpcodeType::Signature),
-        0xad => ("OP_CHECKSIGVERIFY".to_string(), "验证ECDSA签名，失败则终止".to_string(), OpcodeType::Signature),
-        0xae => ("OP_CHECKMULTISIG".to_string(), "验证多重签名".to_string(), OpcodeType::Signature),
-        0xaf => ("OP_CHECKMULTISIGVERIFY".to_string(), "验证多重签名，失败则终止".to_string(), OpcodeType::Signature),
+        0xac => (
+            "OP_CHECKSIG".to_string(),
+            "验证ECDSA签名".to_string(),
+            OpcodeType::Signature,
+        ),
+        0xad => (
+            "OP_CHECKSIGVERIFY".to_string(),
+            "验证ECDSA签名，失败则终止".to_string(),
+            OpcodeType::Signature,
+        ),
+        0xae => (
+            "OP_CHECKMULTISIG".to_string(),
+            "验证多重签名".to_string(),
+            OpcodeType::Signature,
+        ),
+        0xaf => (
+            "OP_CHECKMULTISIGVERIFY".to_string(),
+            "验证多重签名，失败则终止".to_string(),
+            OpcodeType::Signature,
+        ),
 
         // 时间锁定
-        0xb1 => ("OP_CHECKLOCKTIMEVERIFY".to_string(), "检查锁定时间".to_string(), OpcodeType::TimeLock),
-        0xb2 => ("OP_CHECKSEQUENCEVERIFY".to_string(), "检查序列号".to_string(), OpcodeType::TimeLock),
+        0xb1 => (
+            "OP_CHECKLOCKTIMEVERIFY".to_string(),
+            "检查锁定时间".to_string(),
+            OpcodeType::TimeLock,
+        ),
+        0xb2 => (
+            "OP_CHECKSEQUENCEVERIFY".to_string(),
+            "检查序列号".to_string(),
+            OpcodeType::TimeLock,
+        ),
 
         // 控制流
-        0x63 => ("OP_IF".to_string(), "条件执行开始".to_string(), OpcodeType::ControlFlow),
-        0x67 => ("OP_ELSE".to_string(), "条件执行分支".to_string(), OpcodeType::ControlFlow),
-        0x68 => ("OP_ENDIF".to_string(), "条件执行结束".to_string(), OpcodeType::ControlFlow),
-        0x6a => ("OP_RETURN".to_string(), "终止执行".to_string(), OpcodeType::ControlFlow),
+        0x63 => (
+            "OP_IF".to_string(),
+            "条件执行开始".to_string(),
+            OpcodeType::ControlFlow,
+        ),
+        0x67 => (
+            "OP_ELSE".to_string(),
+            "条件执行分支".to_string(),
+            OpcodeType::ControlFlow,
+        ),
+        0x68 => (
+            "OP_ENDIF".to_string(),
+            "条件执行结束".to_string(),
+            OpcodeType::ControlFlow,
+        ),
+        0x6a => (
+            "OP_RETURN".to_string(),
+            "终止执行".to_string(),
+            OpcodeType::ControlFlow,
+        ),
 
         // 其他
-        _ => (format!("OP_UNKNOWN_{:02x}", opcode), "未知操作码".to_string(), OpcodeType::Other),
+        _ => (
+            format!("OP_UNKNOWN_{:02x}", opcode),
+            "未知操作码".to_string(),
+            OpcodeType::Other,
+        ),
     }
 }
 
@@ -293,7 +389,10 @@ fn classify_stack_item(data: &[u8]) -> StackItemType {
         StackItemType::Signature
     } else if data.len() == 20 || data.len() == 32 {
         StackItemType::Hash
-    } else if data.iter().all(|&b| b.is_ascii_graphic() || b.is_ascii_whitespace()) {
+    } else if data
+        .iter()
+        .all(|&b| b.is_ascii_graphic() || b.is_ascii_whitespace())
+    {
         StackItemType::String
     } else {
         StackItemType::Other
@@ -313,8 +412,8 @@ pub fn create_execution_step(
         step,
         opcode: get_opcode_info(opcode).0,
         opcode_value: opcode,
-        stack: stack.as_ref().iter().map(|item| hex::encode(item)).collect(),
-        altstack: altstack.as_ref().iter().map(|item| hex::encode(item)).collect(),
+        stack: stack.iter().map(|item| hex::encode(item)).collect(),
+        altstack: altstack.iter().map(|item| hex::encode(item)).collect(),
         condition_stack: vec![], // 暂时为空，因为ConditionStack没有实现AsRef
         op_count,
     }
@@ -331,7 +430,7 @@ pub fn create_execution_result(
     ExecutionResult {
         success,
         error: error.map(|e| format!("{:?}", e)),
-        final_stack: final_stack.as_ref().iter().map(|item| hex::encode(item)).collect(),
+        final_stack: final_stack.iter().map(|item| hex::encode(item)).collect(),
         final_stack_size: final_stack.len(),
         total_ops,
         execution_time_ms,

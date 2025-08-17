@@ -1,7 +1,7 @@
 use clap::{Parser, ValueEnum};
 use std::fs;
 use std::path::PathBuf;
-use tondi_scriptexec::{TondiScript, ExecError, Stack, utils};
+use tondi_scriptexec::{utils, ExecError, Stack, StackExt, TondiScript};
 
 #[derive(Parser)]
 #[command(
@@ -86,7 +86,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if cli.verbose {
         println!("脚本解析成功:");
         println!("  长度: {} 字节", script.len());
-        println!("  十六进制: {}", hex::encode(script.as_bytes()));
+        println!("  十六进制: {}", hex::encode(script.to_bytes()));
         println!();
     }
 
@@ -123,7 +123,11 @@ fn parse_script(content: &str) -> Result<TondiScript, ExecError> {
     // 尝试解析为十六进制
     if cleaned_content.starts_with("0x") || cleaned_content.chars().all(|c| c.is_ascii_hexdigit()) {
         let hex_content = cleaned_content.trim_start_matches("0x");
-        return TondiScript::from_hex(hex_content);
+        if let Ok(bytes) = hex::decode(hex_content) {
+            return Ok(TondiScript::from_bytes(bytes));
+        } else {
+            return Err(ExecError::ScriptError("无效的十六进制格式".to_string()));
+        }
     }
 
     // 尝试解析为ASM格式（简化实现）
@@ -155,7 +159,7 @@ fn parse_asm_script(asm: &str) -> Result<TondiScript, ExecError> {
             "OP_14" => script_data.push(0x5e),
             "OP_15" => script_data.push(0x5f),
             "OP_16" => script_data.push(0x60),
-            
+
             // 栈操作
             "OP_DUP" => script_data.push(0x76),
             "OP_HASH160" => script_data.push(0xa9),
@@ -163,13 +167,13 @@ fn parse_asm_script(asm: &str) -> Result<TondiScript, ExecError> {
             "OP_VERIFY" => script_data.push(0x69),
             "OP_EQUALVERIFY" => script_data.push(0x88),
             "OP_CHECKSIG" => script_data.push(0xac),
-            
+
             // 控制流
             "OP_IF" => script_data.push(0x63),
             "OP_ELSE" => script_data.push(0x67),
             "OP_ENDIF" => script_data.push(0x68),
             "OP_RETURN" => script_data.push(0x6a),
-            
+
             // 数据推送
             _ => {
                 // 尝试解析为十六进制数据
@@ -187,7 +191,7 @@ fn parse_asm_script(asm: &str) -> Result<TondiScript, ExecError> {
                     }
                 } else if token.starts_with("'") && token.ends_with("'") {
                     // 字符串数据
-                    let str_data = &token[1..token.len()-1];
+                    let str_data = &token[1..token.len() - 1];
                     let bytes = str_data.as_bytes();
                     if bytes.len() <= 75 {
                         script_data.push(bytes.len() as u8);
@@ -202,7 +206,11 @@ fn parse_asm_script(asm: &str) -> Result<TondiScript, ExecError> {
         }
     }
 
-    Ok(TondiScript::new(script_data))
+    Ok(TondiScript::new(
+        script_data,
+        tondi_scriptexec::data_structures::ScriptType::Unknown,
+        0,
+    ))
 }
 
 /// 显示脚本信息
@@ -211,24 +219,28 @@ fn display_script_info(script: &TondiScript, format: &OutputFormat) {
         OutputFormat::Text => {
             println!("脚本信息:");
             println!("  长度: {} 字节", script.len());
-            println!("  十六进制: {}", hex::encode(script.as_bytes()));
+            println!("  十六进制: {}", hex::encode(script.to_bytes()));
         }
         OutputFormat::Json => {
             let json = serde_json::json!({
                 "length": script.len(),
-                "hex": hex::encode(script.as_bytes()),
-                "bytes": script.as_bytes()
+                "hex": hex::encode(script.to_bytes()),
+                "bytes": script.to_bytes()
             });
             println!("{}", serde_json::to_string_pretty(&json).unwrap());
         }
         OutputFormat::Hex => {
-            println!("{}", hex::encode(script.as_bytes()));
+            println!("{}", hex::encode(script.to_bytes()));
         }
     }
 }
 
 /// 执行脚本
-fn execute_script(script: &TondiScript, format: &OutputFormat, verbose: bool) -> Result<(), ExecError> {
+fn execute_script(
+    script: &TondiScript,
+    format: &OutputFormat,
+    verbose: bool,
+) -> Result<(), ExecError> {
     if verbose {
         println!("开始执行脚本...");
     }
@@ -236,34 +248,37 @@ fn execute_script(script: &TondiScript, format: &OutputFormat, verbose: bool) ->
     // 这里应该实现实际的脚本执行逻辑
     // 暂时只是模拟执行
     let mut stack = Stack::new();
-    
+
     // 模拟执行过程
-    let script_bytes = script.as_bytes();
+    let script_bytes = script.to_bytes();
     let mut i = 0;
-    
+
     while i < script_bytes.len() {
         let opcode = script_bytes[i];
         i += 1;
-        
+
         if verbose {
             println!("执行操作码: 0x{:02x}", opcode);
         }
-        
+
         match opcode {
-            0x00 => { // OP_0
+            0x00 => {
+                // OP_0
                 stack.push(vec![]);
                 if verbose {
                     println!("  OP_0: 推入空数据");
                 }
             }
-            0x51..=0x60 => { // OP_1 to OP_16
+            0x51..=0x60 => {
+                // OP_1 to OP_16
                 let value = opcode - 0x50;
                 stack.push(vec![value]);
                 if verbose {
                     println!("  OP_{}: 推入数字 {}", value, value);
                 }
             }
-            0x76 => { // OP_DUP
+            0x76 => {
+                // OP_DUP
                 if let Some(top) = stack.top() {
                     stack.push(top.to_vec());
                     if verbose {
@@ -273,28 +288,31 @@ fn execute_script(script: &TondiScript, format: &OutputFormat, verbose: bool) ->
                     return Err(ExecError::StackUnderflow);
                 }
             }
-            0xa9 => { // OP_HASH160
-                let data = stack.pop()?;
+            0xa9 => {
+                // OP_HASH160
+                let data = stack.pop().ok_or(ExecError::StackUnderflow)?;
                 let hash = utils::hash160(&data);
                 stack.push(hash);
                 if verbose {
                     println!("  OP_HASH160: 计算哈希160");
                 }
             }
-            0x87 => { // OP_EQUAL
+            0x87 => {
+                // OP_EQUAL
                 if stack.len() < 2 {
                     return Err(ExecError::StackUnderflow);
                 }
-                let b = stack.pop()?;
-                let a = stack.pop()?;
+                let b = stack.pop().ok_or(ExecError::StackUnderflow)?;
+                let a = stack.pop().ok_or(ExecError::StackUnderflow)?;
                 let result = if a == b { 1 } else { 0 };
                 stack.push(vec![result]);
                 if verbose {
                     println!("  OP_EQUAL: 比较两个元素，结果: {}", result);
                 }
             }
-            0x69 => { // OP_VERIFY
-                let data = stack.pop()?;
+            0x69 => {
+                // OP_VERIFY
+                let data = stack.pop().ok_or(ExecError::StackUnderflow)?;
                 if data.is_empty() || data[0] == 0 {
                     return Err(ExecError::ScriptError("OP_VERIFY失败".to_string()));
                 }
@@ -302,12 +320,13 @@ fn execute_script(script: &TondiScript, format: &OutputFormat, verbose: bool) ->
                     println!("  OP_VERIFY: 验证成功");
                 }
             }
-            0x88 => { // OP_EQUALVERIFY
+            0x88 => {
+                // OP_EQUALVERIFY
                 if stack.len() < 2 {
                     return Err(ExecError::StackUnderflow);
                 }
-                let b = stack.pop()?;
-                let a = stack.pop()?;
+                let b = stack.pop().ok_or(ExecError::StackUnderflow)?;
+                let a = stack.pop().ok_or(ExecError::StackUnderflow)?;
                 if a != b {
                     return Err(ExecError::ScriptError("OP_EQUALVERIFY失败".to_string()));
                 }
@@ -315,12 +334,13 @@ fn execute_script(script: &TondiScript, format: &OutputFormat, verbose: bool) ->
                     println!("  OP_EQUALVERIFY: 验证成功");
                 }
             }
-            0xac => { // OP_CHECKSIG
+            0xac => {
+                // OP_CHECKSIG
                 if stack.len() < 2 {
                     return Err(ExecError::StackUnderflow);
                 }
-                let _pubkey = stack.pop()?;
-                let _signature = stack.pop()?;
+                let _pubkey = stack.pop().ok_or(ExecError::StackUnderflow)?;
+                let _signature = stack.pop().ok_or(ExecError::StackUnderflow)?;
                 // 这里应该实现实际的签名验证
                 stack.push(vec![1]); // 暂时返回成功
                 if verbose {
@@ -328,7 +348,8 @@ fn execute_script(script: &TondiScript, format: &OutputFormat, verbose: bool) ->
                 }
             }
             _ => {
-                if opcode <= 75 { // 数据推送
+                if opcode <= 75 {
+                    // 数据推送
                     if i + opcode as usize <= script_bytes.len() {
                         let data = script_bytes[i..i + opcode as usize].to_vec();
                         stack.push(data);
@@ -340,16 +361,19 @@ fn execute_script(script: &TondiScript, format: &OutputFormat, verbose: bool) ->
                         return Err(ExecError::ScriptError("数据推送长度不足".to_string()));
                     }
                 } else {
-                    return Err(ExecError::OpcodeError(format!("不支持的操作码: 0x{:02x}", opcode)));
+                    return Err(ExecError::OpcodeError(format!(
+                        "不支持的操作码: 0x{:02x}",
+                        opcode
+                    )));
                 }
             }
         }
-        
+
         if verbose {
             println!("  栈大小: {}", stack.len());
         }
     }
-    
+
     if verbose {
         println!("脚本执行完成");
         println!("最终栈内容:");
@@ -357,7 +381,7 @@ fn execute_script(script: &TondiScript, format: &OutputFormat, verbose: bool) ->
             println!("  [{}]: {}", i, hex::encode(item));
         }
     }
-    
+
     match format {
         OutputFormat::Text => {
             println!("执行结果: 成功");
@@ -375,34 +399,35 @@ fn execute_script(script: &TondiScript, format: &OutputFormat, verbose: bool) ->
             println!("执行成功");
         }
     }
-    
+
     Ok(())
 }
 
 /// 验证脚本
 fn validate_script(script: &TondiScript, format: &OutputFormat) -> Result<(), ExecError> {
     let mut errors = Vec::new();
-    let mut warnings: Vec<String> = Vec::new();
-    
+    let warnings: Vec<String> = Vec::new();
+
     // 检查脚本长度
     if script.len() > 10000 {
         errors.push("脚本长度超过10000字节限制".to_string());
     }
-    
+
     // 检查操作码数量
-    let opcode_count = script.as_bytes().iter().filter(|&&b| b > 0x60).count();
+    let opcode_count = script.to_bytes().iter().filter(|&&b| b > 0x60).count();
     if opcode_count > 201 {
         errors.push("操作码数量超过201个限制".to_string());
     }
-    
+
     // 检查数据推送大小
-    let script_bytes = script.as_bytes();
+    let script_bytes = script.to_bytes();
     let mut i = 0;
     while i < script_bytes.len() {
         let opcode = script_bytes[i];
         i += 1;
-        
-        if opcode <= 75 { // 数据推送
+
+        if opcode <= 75 {
+            // 数据推送
             if i + opcode as usize <= script_bytes.len() {
                 let data = &script_bytes[i..i + opcode as usize];
                 if data.len() > 520 {
@@ -414,7 +439,7 @@ fn validate_script(script: &TondiScript, format: &OutputFormat) -> Result<(), Ex
             }
         }
     }
-    
+
     // 输出结果
     match format {
         OutputFormat::Text => {
@@ -452,10 +477,13 @@ fn validate_script(script: &TondiScript, format: &OutputFormat) -> Result<(), Ex
             }
         }
     }
-    
+
     if errors.is_empty() {
         Ok(())
     } else {
-        Err(ExecError::ScriptError(format!("验证失败: {} 个错误", errors.len())))
+        Err(ExecError::ScriptError(format!(
+            "验证失败: {} 个错误",
+            errors.len()
+        )))
     }
 }
