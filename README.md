@@ -1,64 +1,89 @@
 # Tondi Script Executor
 
-一个专为Tondi网络设计的脚本执行工具。
+A script execution tool designed specifically for the Tondi network.
 
-**注意：这是一个私有实现，仍然在开发中，仅供内部使用！**
+**Note: This is a private implementation still under development, for internal use only!**
 
-## 项目状态
+## Project Status
 
-本项目是一个正在进行中的Tondi脚本执行器，旨在为Tondi网络提供完整的脚本执行能力。
-目前尚未完全实现所有操作码，但作为库已经能够提供良好的脚本执行洞察。
+This project is a work-in-progress Tondi script executor that aims to provide complete script execution capabilities for the Tondi network.
+While not all opcodes are fully implemented yet, it already provides good script execution insights as a library.
 
-## 功能特性
+## Features
 
-- 完整的Tondi脚本执行引擎
-- 支持WASM和CLI接口
-- 逐步执行脚本，便于调试
-- 私有化实现，确保安全性
+- Complete Tondi script execution engine
+- Support for WASM and CLI interfaces
+- Step-by-step script execution for debugging
+- Private implementation ensuring security
+- Support for multiple execution contexts (Legacy, SegWit v0, Tapscript)
+- Experimental opcode support (OP_CAT, OP_MUL, OP_DIV)
 
-## 使用方法
+## Usage
 
 ### CLI
 
-你可以使用 `cargo run` 或构建/安装二进制文件：
+You can use `cargo run` or build/install the binary:
 
 ```bash
-# 调试模式构建
+# Debug build
 $ cargo build --locked
-# 发布模式构建（优化）
+# Release build (optimized)
 $ cargo build --locked --release
-# 安装到 ~/.cargo/bin
+# Install to ~/.cargo/bin
 $ cargo install --locked --path .
 ```
 
-#### 使用说明
+#### Usage Instructions
 
-CLI目前只接受一个参数：ASM脚本文件的路径：
+The CLI currently accepts one argument: the path to an ASM script file:
 
 ```bash
-# 使用二进制文件
+# Using binary
 $ tondiexec <script.bs>
-# 使用cargo run
+# Using cargo run
 $ cargo run -- <script.bs>
 ```
 
+#### CLI Options
+
+- `-f, --format`: Output format (text, json, hex)
+- `-v, --verbose`: Verbose output
+- `-m, --mode`: Execution mode (parse, execute, validate)
+
 ### WASM
 
-提供了WASM绑定。API文档请参见 `src/wasm.rs` 文件。
+WASM bindings are provided. See the `src/wasm.rs` file for API documentation.
 
-要构建WASM绑定，请[安装wasm-pack](https://rustwasm.github.io/wasm-pack/installer/)，
-然后运行以下脚本：
+To build WASM bindings, [install wasm-pack](https://rustwasm.github.io/wasm-pack/installer/),
+then run the following script:
 
 ```bash
 ./build-wasm.sh
 ```
 
-## 开发
+## Architecture
 
-这是一个私有项目，仅供Tondi团队内部使用。
+The project consists of several key modules:
 
-## 许可证
+- **Core Execution Engine**: Main script execution logic
+- **Data Structures**: Stack, script representation, and execution context
+- **Signatures**: Script signature verification
+- **Utils**: Cryptographic utilities and helper functions
+- **WASM Interface**: WebAssembly bindings for browser/Node.js usage
+- **CLI Interface**: Command-line tool for script execution
 
-MIT License - 私有使用
-# tondi-scriptexec
-# tondi-scriptexec
+## Dependencies
+
+- **Tondi Dependencies**: Reuses existing Tondi code (txscript, hashes, consensus-core)
+- **Core**: serde, lazy_static
+- **CLI**: clap
+- **WASM**: wasm-bindgen, serde-wasm-bindgen
+- **Crypto**: secp256k1, hex
+
+## Development
+
+This is a private project for internal use by the Tondi team.
+
+## License
+
+MIT License - Private Use
