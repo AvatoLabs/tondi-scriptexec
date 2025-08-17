@@ -104,8 +104,7 @@ pub fn is_minimal_push(data: &[u8]) -> bool {
 /// 计算哈希160（SHA256 + RIPEMD160）
 pub fn hash160(data: &[u8]) -> Vec<u8> {
     use sha2::{Digest, Sha256};
-use ripemd::Ripemd160;
-use ripemd::digest::Digest as RipemdDigest;
+    use ripemd::Ripemd160;
 
     let sha256_hash = Sha256::digest(data);
     let ripemd160_hash = Ripemd160::new().chain_update(&sha256_hash).finalize();
@@ -130,18 +129,9 @@ pub fn sha256d(data: &[u8]) -> Vec<u8> {
 /// 计算RIPEMD160哈希
 pub fn ripemd160(data: &[u8]) -> Vec<u8> {
     use ripemd::Ripemd160;
+    use ripemd::digest::Digest;
     let hash = Ripemd160::new().chain_update(data).finalize();
     hash.to_vec()
-}
-
-/// 计算Blake2b哈希
-pub fn blake2b(data: &[u8], key: &[u8], output_len: usize) -> Vec<u8> {
-    use blake2::Blake2b;
-    use blake2::digest::{Update, VariableOutput};
-    
-    let mut hasher = Blake2b::new_keyed(key, output_len).unwrap();
-    hasher.update(data);
-    hasher.finalize_boxed().to_vec()
 }
 
 /// 计算Blake3哈希

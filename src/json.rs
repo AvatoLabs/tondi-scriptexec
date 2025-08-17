@@ -306,7 +306,7 @@ pub fn create_execution_step(
     opcode: u8,
     stack: &Stack,
     altstack: &Stack,
-    condition_stack: &crate::data_structures::ConditionStack,
+    _condition_stack: &crate::data_structures::ConditionStack,
     op_count: usize,
 ) -> ExecutionStep {
     ExecutionStep {

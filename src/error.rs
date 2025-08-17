@@ -78,8 +78,8 @@ impl From<hex::FromHexError> for ExecError {
 }
 
 impl From<secp256k1::Error> for ExecError {
-    fn from(err: secp256k1::Error) -> Self {
-        ExecError::SignatureVerificationFailed
+    fn from(_err: secp256k1::Error) -> Self {
+        ExecError::InvalidSignature
     }
 }
 

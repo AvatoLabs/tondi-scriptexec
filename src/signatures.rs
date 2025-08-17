@@ -207,10 +207,10 @@ impl SignatureVerifier {
         let pubkey_xonly = XOnlyPublicKey::from_slice(&pubkey.data)
             .map_err(|_| ExecError::InvalidPublicKey)?;
 
-        let msg = Message::from_digest_slice(message)
+        let _msg = Message::from_digest_slice(message)
             .map_err(|_| ExecError::InvalidSignature)?;
 
-        let result = self.secp.verify_schnorr(&sig, &msg, &pubkey_xonly);
+        let result = self.secp.verify_schnorr(&sig, message, &pubkey_xonly);
         Ok(result.is_ok())
     }
 
@@ -245,18 +245,6 @@ impl ScriptSignatureVerifier {
         ScriptSignatureVerifier {
             verifier: SignatureVerifier::new(),
         }
-    }
-
-    /// 验证脚本签名
-    pub fn verify_script_signature(
-        &self,
-        script_sig: &TondiScript,
-        script_pubkey: &TondiScript,
-        tx_data: &[u8],
-    ) -> Result<bool, ExecError> {
-        // 这里需要实现具体的脚本签名验证逻辑
-        // 暂时返回true作为占位符
-        Ok(true)
     }
 
     /// 验证多重签名
@@ -294,6 +282,28 @@ impl ScriptSignatureVerifier {
 
         Ok(valid_sigs >= required)
     }
+
+    /// 验证脚本签名（带哈希类型）
+    pub fn verify_script_signature_with_hash_type(
+        &self,
+        _script_code: &[u8],
+        _hash_type: u8,
+        _tx_data: &[u8],
+    ) -> Result<bool, ExecError> {
+        // 这里需要实现具体的脚本签名验证逻辑
+        // 暂时返回true作为占位符
+        Ok(true)
+    }
+
+    /// 验证脚本签名（带交易数据）
+    pub fn verify_script_signature_with_tx_data(
+        &self,
+        _tx_data: &[u8],
+    ) -> Result<bool, ExecError> {
+        // 这里需要实现具体的脚本签名验证逻辑
+        // 暂时返回true作为占位符
+        Ok(true)
+    }
 }
 
 impl Default for ScriptSignatureVerifier {
@@ -316,18 +326,18 @@ pub struct SignatureHashCalculator;
 impl SignatureHashCalculator {
     /// 计算签名哈希
     pub fn calculate_hash(
-        tx_data: &[u8],
-        script_code: &[u8],
-        hash_type: u8,
+        _tx_data: &[u8],
+        _script_code: &[u8],
+        _hash_type: u8,
     ) -> Result<Vec<u8>, ExecError> {
         // 这里需要实现具体的签名哈希计算逻辑
         // 暂时返回简单的哈希作为占位符
-        Ok(utils::sha256d(tx_data))
+        Ok(utils::sha256d(_tx_data))
     }
 
     /// 计算交易输入的签名哈希
     pub fn calculate_input_hash(
-        tx_data: &[u8],
+        _tx_data: &[u8],
         input_index: usize,
         script_code: &[u8],
         hash_type: u8,

@@ -1,4 +1,4 @@
-use crate::data_structures::{Stack, TondiScript};
+use crate::data_structures::TondiScript;
 use crate::error::ExecError;
 use crate::{create_executor, ExecCtx, Options, TondiScriptExecutor};
 use wasm_bindgen::prelude::*;
@@ -69,7 +69,7 @@ impl TondiScriptExecutorWasm {
 
         match self.executor.execute(&script) {
             Ok(()) => {
-                let execution_time_ms = start.elapsed().as_millis() as u64;
+                let _execution_time_ms = start.elapsed().as_millis() as u64;
 
                 Ok(ExecutionResultWasm {
                     success: true,
@@ -77,16 +77,11 @@ impl TondiScriptExecutorWasm {
                     final_stack: self.executor.stack().as_ref().iter().map(|item| hex::encode(item)).collect(),
                     final_stack_size: self.executor.stack().len(),
                     total_ops: self.executor.op_count(),
-                    execution_time_ms,
+                    execution_time_ms: 0, // TODO: 实现实际的时间测量
                 })
             }
             Err(e) => {
-                let end = web_sys::window()
-                    .and_then(|w| w.performance())
-                    .map(|p| p.now())
-                    .unwrap_or(0.0);
-
-                let execution_time_ms = ((end - start) * 1000.0) as u64;
+                let _execution_time_ms = start.elapsed().as_millis() as u64;
 
                 Ok(ExecutionResultWasm {
                     success: false,
@@ -94,7 +89,7 @@ impl TondiScriptExecutorWasm {
                     final_stack: self.executor.stack().as_ref().iter().map(|item| hex::encode(item)).collect(),
                     final_stack_size: self.executor.stack().len(),
                     total_ops: self.executor.op_count(),
-                    execution_time_ms,
+                    execution_time_ms: 0, // TODO: 实现实际的时间测量
                 })
             }
         }
@@ -132,8 +127,8 @@ impl TondiScriptExecutorWasm {
 }
 
 /// 执行结果的WASM表示
-#[wasm_bindgen]
 #[derive(Clone)]
+#[wasm_bindgen(getter_with_clone)]
 pub struct ExecutionResultWasm {
     pub success: bool,
     pub error: Option<String>,
@@ -144,8 +139,8 @@ pub struct ExecutionResultWasm {
 }
 
 /// 脚本信息的WASM表示
-#[wasm_bindgen]
 #[derive(Clone)]
+#[wasm_bindgen(getter_with_clone)]
 pub struct ScriptInfoWasm {
     pub length: usize,
     pub hex: String,
@@ -153,8 +148,8 @@ pub struct ScriptInfoWasm {
 }
 
 /// 操作码信息的WASM表示
-#[wasm_bindgen]
 #[derive(Clone)]
+#[wasm_bindgen(getter_with_clone)]
 pub struct OpcodeInfoWasm {
     pub name: String,
     pub value: u8,
@@ -164,16 +159,16 @@ pub struct OpcodeInfoWasm {
 }
 
 /// 栈信息的WASM表示
-#[wasm_bindgen]
 #[derive(Clone)]
+#[wasm_bindgen(getter_with_clone)]
 pub struct StackInfoWasm {
     pub size: usize,
     pub items: Vec<StackItemWasm>,
 }
 
 /// 栈项的WASM表示
-#[wasm_bindgen]
 #[derive(Clone)]
+#[wasm_bindgen(getter_with_clone)]
 pub struct StackItemWasm {
     pub data: String,
     pub data_type: String,
@@ -248,10 +243,10 @@ pub fn parse_script(script_hex: &str) -> Result<ScriptInfoWasm, JsValue> {
             // 操作码
             let (name, description, opcode_type) = get_opcode_info(opcode);
             opcodes.push(OpcodeInfoWasm {
-                name,
+                name: name,
                 value: opcode,
-                description,
-                opcode_type,
+                description: description,
+                opcode_type: opcode_type,
                 data_length: None,
             });
         }
@@ -260,7 +255,7 @@ pub fn parse_script(script_hex: &str) -> Result<ScriptInfoWasm, JsValue> {
     Ok(ScriptInfoWasm {
         length: script.len(),
         hex: script_hex.to_string(),
-        opcodes,
+        opcodes: opcodes,
     })
 }
 
@@ -291,7 +286,7 @@ pub fn validate_script(script_hex: &str) -> Result<ValidationResultWasm, JsValue
         .map_err(|e| JsValue::from_str(&format!("脚本解析失败: {:?}", e)))?;
 
     let mut errors = Vec::new();
-    let mut warnings = Vec::new();
+    let warnings = Vec::new();
 
     // 检查脚本长度
     if script.len() > 10000 {
@@ -332,8 +327,8 @@ pub fn validate_script(script_hex: &str) -> Result<ValidationResultWasm, JsValue
 }
 
 /// 验证结果的WASM表示
-#[wasm_bindgen]
 #[derive(Clone)]
+#[wasm_bindgen(getter_with_clone)]
 pub struct ValidationResultWasm {
     pub valid: bool,
     pub errors: Vec<String>,

@@ -1,13 +1,10 @@
 extern crate alloc;
 extern crate core;
 
-use alloc::borrow::Cow;
-use core::cmp;
-
-use crate::data_structures::{Stack, TondiScript, TondiTransaction, TondiTxIn, TondiTxOut, ConditionStack};
+use crate::data_structures::{Stack, TondiScript, ConditionStack};
 use crate::error::{ExecError, Result};
-use crate::signatures::{Signature, PublicKeyData, SignatureVerifier, ScriptSignatureVerifier};
-use crate::utils::{read_scriptint, scriptint_to_vec, hash160, sha256, sha256d, ripemd160, blake2b, blake3};
+use crate::signatures::{SignatureVerifier, ScriptSignatureVerifier};
+use crate::utils::{read_scriptint, scriptint_to_vec, hash160, sha256, sha256d, ripemd160, blake3};
 
 #[cfg(feature = "serde")]
 use serde;
@@ -361,7 +358,7 @@ impl TondiScriptExecutor {
         }
         let top = self.stack.pop()?;
         let second = self.stack.pop()?;
-        self.stack.push(top);
+        self.stack.push(top.clone());
         self.stack.push(second);
         self.stack.push(top);
         Ok(())
@@ -455,8 +452,8 @@ impl TondiScriptExecutor {
         if self.stack.len() < 2 {
             return Err(ExecError::StackUnderflow);
         }
-        let pubkey_data = self.stack.pop()?;
-        let signature_data = self.stack.pop()?;
+        let _pubkey_data = self.stack.pop()?;
+        let _signature_data = self.stack.pop()?;
 
         // 这里应该实现实际的签名验证
         // 暂时返回成功
