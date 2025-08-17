@@ -1,0 +1,45 @@
+[package]
+name = "tondi-scriptexec"
+version = "0.1.0"
+edition = "2021"
+description = "Tondi Script interpreter/executor - Private implementation"
+authors = ["Tondi Team <team@tondi.net>"]
+license = "MIT"
+repository = "https://github.com/tondinet/tondi-scriptexec"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "tondiexec"
+path = "src/main.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli", "wasm"]
+json = ["serde", "serde_json"]
+cli = ["json", "clap"]
+wasm = ["json", "wasm-bindgen", "serde-wasm-bindgen", "console_error_panic_hook", "getrandom/js"]
+
+[dependencies]
+# Core dependencies
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+lazy_static = "1.4.0"
+
+# CLI dependencies
+clap = { version = "4", features = ["derive"], optional = true }
+
+# WASM dependencies
+wasm-bindgen = { version = "0.2.87", optional = true }
+serde-wasm-bindgen = { version = "0.6.1", optional = true }
+console_error_panic_hook = { version = "0.1.7", optional = true }
+getrandom = { version = "0.2", optional = true }
+
+# Crypto dependencies (replacing bitcoin with tondi equivalents)
+secp256k1 = "0.32.0"
+sha2 = "0.10.0"
+ripemd = "0.1.0"
+blake2 = "0.10.0"
+blake3 = "1.8.2"
