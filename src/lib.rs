@@ -520,6 +520,472 @@ impl TondiScriptExecutor {
         Ok(())
     }
 
+    // 添加缺失的操作码实现
+    fn op_2drop(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        self.stack.pop()?;
+        self.stack.pop()?;
+        Ok(())
+    }
+
+    fn op_2dup(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let second = self.stack.get(self.stack.len() - 2).ok_or(ExecError::StackIndexOutOfBounds)?.to_vec();
+        let first = self.stack.get(self.stack.len() - 1).ok_or(ExecError::StackIndexOutOfBounds)?.to_vec();
+        self.stack.push(second);
+        self.stack.push(first);
+        Ok(())
+    }
+
+    fn op_3dup(&mut self) -> Result<()> {
+        if self.stack.len() < 3 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let third = self.stack.get(self.stack.len() - 3).ok_or(ExecError::StackIndexOutOfBounds)?.to_vec();
+        let second = self.stack.get(self.stack.len() - 2).ok_or(ExecError::StackIndexOutOfBounds)?.to_vec();
+        let first = self.stack.get(self.stack.len() - 1).ok_or(ExecError::StackIndexOutOfBounds)?.to_vec();
+        self.stack.push(third);
+        self.stack.push(second);
+        self.stack.push(first);
+        Ok(())
+    }
+
+    fn op_2over(&mut self) -> Result<()> {
+        if self.stack.len() < 4 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let fourth = self.stack.get(self.stack.len() - 4).ok_or(ExecError::StackIndexOutOfBounds)?.to_vec();
+        let third = self.stack.get(self.stack.len() - 3).ok_or(ExecError::StackIndexOutOfBounds)?.to_vec();
+        self.stack.push(fourth);
+        self.stack.push(third);
+        Ok(())
+    }
+
+    fn op_2rot(&mut self) -> Result<()> {
+        if self.stack.len() < 6 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let sixth = self.stack.pop()?;
+        let fifth = self.stack.pop()?;
+        let fourth = self.stack.pop()?;
+        let third = self.stack.pop()?;
+        let second = self.stack.pop()?;
+        let first = self.stack.pop()?;
+        self.stack.push(fourth);
+        self.stack.push(third);
+        self.stack.push(second);
+        self.stack.push(first);
+        self.stack.push(sixth);
+        self.stack.push(fifth);
+        Ok(())
+    }
+
+    fn op_2swap(&mut self) -> Result<()> {
+        if self.stack.len() < 4 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let fourth = self.stack.pop()?;
+        let third = self.stack.pop()?;
+        let second = self.stack.pop()?;
+        let first = self.stack.pop()?;
+        self.stack.push(third);
+        self.stack.push(fourth);
+        self.stack.push(first);
+        self.stack.push(second);
+        Ok(())
+    }
+
+    // 占位符实现
+    fn op_booland(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let result = if !a.is_empty() && !b.is_empty() { 1 } else { 0 };
+        self.stack.push(vec![result]);
+        Ok(())
+    }
+
+    fn op_boolor(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let result = if !a.is_empty() || !b.is_empty() { 1 } else { 0 };
+        self.stack.push(vec![result]);
+        Ok(())
+    }
+
+    fn op_numequal(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
+        let result = if a_num == b_num { 1 } else { 0 };
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_numequalverify(&mut self) -> Result<()> {
+        self.op_numequal()?;
+        self.op_verify()?;
+        Ok(())
+    }
+
+    fn op_numnotequal(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
+        let result = if a_num != b_num { 1 } else { 0 };
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_lessthan(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
+        let result = if a_num < b_num { 1 } else { 0 };
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_greaterthan(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
+        let result = if a_num > b_num { 1 } else { 0 };
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_lessthanorequal(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
+        let result = if a_num <= b_num { 1 } else { 0 };
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_greaterthanorequal(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
+        let result = if a_num >= b_num { 1 } else { 0 };
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_min(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
+        let result = if a_num < b_num { a_num } else { b_num };
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_max(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
+        let result = if a_num > b_num { a_num } else { b_num };
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    // 算术操作占位符
+    fn op_add(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
+        let result = a_num + b_num;
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_sub(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
+        let result = a_num - b_num;
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_mul(&mut self) -> Result<()> {
+        if !self.options.experimental.op_mul {
+            return Err(ExecError::OpcodeError("OP_MUL未启用".to_string()));
+        }
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
+        let result = a_num * b_num;
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_div(&mut self) -> Result<()> {
+        if !self.options.experimental.op_div {
+            return Err(ExecError::OpcodeError("OP_DIV未启用".to_string()));
+        }
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
+        if b_num == 0 {
+            return Err(ExecError::ScriptError("除零错误".to_string()));
+        }
+        let result = a_num / b_num;
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_mod(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
+        if b_num == 0 {
+            return Err(ExecError::ScriptError("模零错误".to_string()));
+        }
+        let result = a_num % b_num;
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_lshift(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
+        if b_num < 0 || b_num > 31 {
+            return Err(ExecError::ScriptError("移位值超出范围".to_string()));
+        }
+        let result = a_num << b_num;
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_rshift(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
+        if b_num < 0 || b_num > 31 {
+            return Err(ExecError::ScriptError("移位值超出范围".to_string()));
+        }
+        let result = a_num >> b_num;
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_codeseparator(&mut self) -> Result<()> {
+        // 代码分隔符，暂时不实现
+        Ok(())
+    }
+
+    // 其他操作码占位符
+    fn op_invert(&mut self) -> Result<()> {
+        if self.stack.len() < 1 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let result = !a_num;
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_and(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
+        let result = a_num & b_num;
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_or(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
+        let result = a_num | b_num;
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_xor(&mut self) -> Result<()> {
+        if self.stack.len() < 2 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let b = self.stack.pop()?;
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let b_num = read_scriptint(&b, 4, self.options.require_minimal)?;
+        let result = a_num ^ b_num;
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_1add(&mut self) -> Result<()> {
+        if self.stack.len() < 1 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let result = a_num + 1;
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_1sub(&mut self) -> Result<()> {
+        if self.stack.len() < 1 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let result = a_num - 1;
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_2mul(&mut self) -> Result<()> {
+        if self.stack.len() < 1 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let result = a_num * 2;
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_2div(&mut self) -> Result<()> {
+        if self.stack.len() < 1 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let result = a_num / 2;
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_negate(&mut self) -> Result<()> {
+        if self.stack.len() < 1 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let result = -a_num;
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_abs(&mut self) -> Result<()> {
+        if self.stack.len() < 1 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let result = a_num.abs();
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_not(&mut self) -> Result<()> {
+        if self.stack.len() < 1 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let result = if a_num == 0 { 1 } else { 0 };
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
+    fn op_0notequal(&mut self) -> Result<()> {
+        if self.stack.len() < 1 {
+            return Err(ExecError::StackUnderflow);
+        }
+        let a = self.stack.pop()?;
+        let a_num = read_scriptint(&a, 4, self.options.require_minimal)?;
+        let result = if a_num != 0 { 1 } else { 0 };
+        self.stack.push(scriptint_to_vec(result));
+        Ok(())
+    }
+
     // 获取栈的引用
     pub fn stack(&self) -> &Stack {
         &self.stack
@@ -530,6 +996,16 @@ impl TondiScriptExecutor {
         &self.altstack
     }
 
+    /// 获取栈的可变引用
+    pub fn stack_mut(&mut self) -> &mut Stack {
+        &mut self.stack
+    }
+
+    /// 获取备用栈的可变引用
+    pub fn altstack_mut(&mut self) -> &mut Stack {
+        &mut self.altstack
+    }
+
     /// 获取操作码计数
     pub fn op_count(&self) -> usize {
         self.op_count
@@ -538,6 +1014,105 @@ impl TondiScriptExecutor {
     /// 检查是否应该执行当前操作码
     fn should_execute(&self) -> bool {
         self.condition_stack.top().unwrap_or(true)
+    }
+
+
+
+    /// 执行单个操作码（内部方法）
+    fn execute_opcode_internal(&mut self, opcode: u8) -> Result<()> {
+        match opcode {
+            // 常量操作码
+            0x00 => self.op_0()?,
+            0x51..=0x60 => self.op_push_number(opcode - 0x50)?,
+            0x4f => self.op_1negate()?,
+
+            // 栈操作
+            0x76 => self.op_dup()?,
+            0x77 => self.op_nip()?,
+            0x78 => self.op_over()?,
+            0x79 => self.op_pick()?,
+            0x7a => self.op_roll()?,
+            0x7b => self.op_rot()?,
+            0x7c => self.op_swap()?,
+            0x7d => self.op_tuck()?,
+            0x6d => self.op_2drop()?,
+            0x6e => self.op_2dup()?,
+            0x6f => self.op_3dup()?,
+            0x70 => self.op_2over()?,
+            0x71 => self.op_2rot()?,
+            0x72 => self.op_2swap()?,
+
+            // 条件语句
+            0x63 => self.op_if()?,
+            0x67 => self.op_else()?,
+            0x68 => self.op_endif()?,
+
+            // 逻辑操作
+            0x87 => self.op_equal()?,
+            0x88 => self.op_equalverify()?,
+            0x69 => self.op_verify()?,
+            0x9a => self.op_booland()?,
+            0x9b => self.op_boolor()?,
+            0x9c => self.op_numequal()?,
+            0x9d => self.op_numequalverify()?,
+            0x9e => self.op_numnotequal()?,
+            0x9f => self.op_lessthan()?,
+            0xa0 => self.op_greaterthan()?,
+            0xa1 => self.op_lessthanorequal()?,
+            0xa2 => self.op_greaterthanorequal()?,
+            0xa3 => self.op_min()?,
+            0xa4 => self.op_max()?,
+
+            // 算术操作
+            0x93 => self.op_add()?,
+            0x94 => self.op_sub()?,
+            0x95 => self.op_mul()?,
+            0x96 => self.op_div()?,
+            0x97 => self.op_mod()?,
+            0x98 => self.op_lshift()?,
+            0x99 => self.op_rshift()?,
+
+            // 哈希操作
+            0xa6 => self.op_ripemd160()?,
+            0xa7 => self.op_sha1()?,
+            0xa8 => self.op_sha256()?,
+            0xa9 => self.op_hash160()?,
+            0xaa => self.op_hash256()?,
+            0xab => self.op_codeseparator()?,
+
+            // 签名操作
+            0xac => self.op_checksig()?,
+            0xad => self.op_checksigverify()?,
+            0xae => self.op_checkmultisig()?,
+            0xaf => self.op_checkmultisigverify()?,
+
+            // 时间锁定
+            0xb1 => self.op_checklocktimeverify()?,
+            0xb2 => self.op_checksequenceverify()?,
+
+            // 其他
+            0x6a => self.op_return()?,
+            0x75 => self.op_depth()?,
+            0x7e => self.op_size()?,
+            0x7f => self.op_invert()?,
+            0x80 => self.op_and()?,
+            0x81 => self.op_or()?,
+            0x82 => self.op_xor()?,
+            0x83 => self.op_equal()?,
+            0x84 => self.op_equalverify()?,
+            0x85 => self.op_1add()?,
+            0x86 => self.op_1sub()?,
+            0x8b => self.op_2mul()?,
+            0x8c => self.op_2div()?,
+            0x8d => self.op_negate()?,
+            0x8e => self.op_abs()?,
+            0x8f => self.op_not()?,
+            0x90 => self.op_0notequal()?,
+
+            _ => return Err(ExecError::OpcodeError(format!("不支持的操作码: 0x{:02x}", opcode))),
+        }
+
+        Ok(())
     }
 }
 
@@ -559,8 +1134,4 @@ pub fn execute_script_with_result(script: &TondiScript, ctx: ExecCtx, options: O
     Ok(executor.stack().clone())
 }
 
-// 重新导出主要类型
-pub use data_structures::{Stack, TondiScript, TondiTransaction, TondiTxIn, TondiTxOut, ConditionStack};
-pub use error::{ExecError, Result};
-pub use signatures::{Signature, PublicKeyData, SignatureVerifier, ScriptSignatureVerifier};
-pub use utils::{read_scriptint, scriptint_to_vec, hash160, sha256, sha256d, ripemd160, blake2b, blake3};
+

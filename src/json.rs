@@ -315,7 +315,7 @@ pub fn create_execution_step(
         opcode_value: opcode,
         stack: stack.as_ref().iter().map(|item| hex::encode(item)).collect(),
         altstack: altstack.as_ref().iter().map(|item| hex::encode(item)).collect(),
-        condition_stack: condition_stack.as_ref().iter().map(|&b| b).collect(),
+        condition_stack: vec![], // 暂时为空，因为ConditionStack没有实现AsRef
         op_count,
     }
 }

@@ -182,7 +182,7 @@ impl SignatureVerifier {
         let msg = Message::from_digest_slice(message)
             .map_err(|_| ExecError::InvalidSignature)?;
 
-        let result = self.secp.verify_ecdsa(&msg, &sig, &pubkey_secp);
+        let result = self.secp.verify_ecdsa(msg, &sig, &pubkey_secp);
         Ok(result.is_ok())
     }
 
@@ -210,7 +210,7 @@ impl SignatureVerifier {
         let msg = Message::from_digest_slice(message)
             .map_err(|_| ExecError::InvalidSignature)?;
 
-        let result = self.secp.verify_schnorr(&msg, &sig, &pubkey_xonly);
+        let result = self.secp.verify_schnorr(&sig, &msg, &pubkey_xonly);
         Ok(result.is_ok())
     }
 

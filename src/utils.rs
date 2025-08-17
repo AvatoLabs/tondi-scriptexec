@@ -1,4 +1,4 @@
-use crate::{data_structures::ConditionStack, ExecError};
+use crate::{data_structures::ConditionStack, error::ExecError};
 
 /// 读取脚本整数
 pub fn read_scriptint(data: &[u8], max_size: usize, require_minimal: bool) -> Result<i64, ExecError> {
@@ -64,7 +64,8 @@ pub fn scriptint_to_vec(value: i64) -> Vec<u8> {
         if result.len() > 0 && (result[result.len() - 1] & 0x80) != 0 {
             result.push(0x80);
         } else if result.len() > 0 {
-            result[result.len() - 1] |= 0x80;
+            let last_index = result.len() - 1;
+            result[last_index] |= 0x80;
         }
     } else if result.len() > 0 && (result[result.len() - 1] & 0x80) != 0 {
         result.push(0x00);
@@ -103,10 +104,11 @@ pub fn is_minimal_push(data: &[u8]) -> bool {
 /// 计算哈希160（SHA256 + RIPEMD160）
 pub fn hash160(data: &[u8]) -> Vec<u8> {
     use sha2::{Digest, Sha256};
-    use ripemd::Ripemd160;
+use ripemd::Ripemd160;
+use ripemd::digest::Digest as RipemdDigest;
 
     let sha256_hash = Sha256::digest(data);
-    let ripemd160_hash = Ripemd160::digest(&sha256_hash);
+    let ripemd160_hash = Ripemd160::new().chain_update(&sha256_hash).finalize();
     ripemd160_hash.to_vec()
 }
 
@@ -128,7 +130,7 @@ pub fn sha256d(data: &[u8]) -> Vec<u8> {
 /// 计算RIPEMD160哈希
 pub fn ripemd160(data: &[u8]) -> Vec<u8> {
     use ripemd::Ripemd160;
-    let hash = Ripemd160::digest(data);
+    let hash = Ripemd160::new().chain_update(data).finalize();
     hash.to_vec()
 }
 
