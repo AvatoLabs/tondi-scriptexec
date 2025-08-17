@@ -1,7 +1,7 @@
 use clap::{Parser, ValueEnum};
 use std::fs;
 use std::path::PathBuf;
-use tondi_scriptexec::{TondiScript, ExecError};
+use tondi_scriptexec::{TondiScript, ExecError, Stack, utils};
 
 #[derive(Parser)]
 #[command(
@@ -28,14 +28,14 @@ struct Cli {
     mode: ExecutionMode,
 }
 
-#[derive(ValueEnum, Clone)]
+#[derive(ValueEnum, Clone, Debug)]
 enum OutputFormat {
     Text,
     Json,
     Hex,
 }
 
-#[derive(ValueEnum, Clone)]
+#[derive(ValueEnum, Clone, Debug)]
 enum ExecutionMode {
     Parse,
     Execute,
@@ -235,7 +235,7 @@ fn execute_script(script: &TondiScript, format: &OutputFormat, verbose: bool) ->
 
     // 这里应该实现实际的脚本执行逻辑
     // 暂时只是模拟执行
-    let mut stack = tondi_scriptexec::data_structures::Stack::new();
+    let mut stack = Stack::new();
     
     // 模拟执行过程
     let script_bytes = script.as_bytes();
@@ -274,14 +274,11 @@ fn execute_script(script: &TondiScript, format: &OutputFormat, verbose: bool) ->
                 }
             }
             0xa9 => { // OP_HASH160
-                if let Some(data) = stack.pop() {
-                    let hash = tondi_scriptexec::utils::hash160(&data);
-                    stack.push(hash);
-                    if verbose {
-                        println!("  OP_HASH160: 计算哈希160");
-                    }
-                } else {
-                    return Err(ExecError::StackUnderflow);
+                let data = stack.pop()?;
+                let hash = utils::hash160(&data);
+                stack.push(hash);
+                if verbose {
+                    println!("  OP_HASH160: 计算哈希160");
                 }
             }
             0x87 => { // OP_EQUAL
@@ -297,15 +294,12 @@ fn execute_script(script: &TondiScript, format: &OutputFormat, verbose: bool) ->
                 }
             }
             0x69 => { // OP_VERIFY
-                if let Some(data) = stack.pop() {
-                    if data.is_empty() || data[0] == 0 {
-                        return Err(ExecError::ScriptError("OP_VERIFY失败".to_string()));
-                    }
-                    if verbose {
-                        println!("  OP_VERIFY: 验证成功");
-                    }
-                } else {
-                    return Err(ExecError::StackUnderflow);
+                let data = stack.pop()?;
+                if data.is_empty() || data[0] == 0 {
+                    return Err(ExecError::ScriptError("OP_VERIFY失败".to_string()));
+                }
+                if verbose {
+                    println!("  OP_VERIFY: 验证成功");
                 }
             }
             0x88 => { // OP_EQUALVERIFY
@@ -388,7 +382,7 @@ fn execute_script(script: &TondiScript, format: &OutputFormat, verbose: bool) ->
 /// 验证脚本
 fn validate_script(script: &TondiScript, format: &OutputFormat) -> Result<(), ExecError> {
     let mut errors = Vec::new();
-    let mut warnings = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
     
     // 检查脚本长度
     if script.len() > 10000 {

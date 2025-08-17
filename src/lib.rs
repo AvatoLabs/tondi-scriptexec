@@ -1,26 +1,24 @@
 extern crate alloc;
 extern crate core;
 
-use crate::data_structures::{Stack, TondiScript, ConditionStack};
-use crate::error::{ExecError, Result};
-use crate::signatures::{SignatureVerifier, ScriptSignatureVerifier};
-use crate::utils::{read_scriptint, scriptint_to_vec, hash160, sha256, sha256d, ripemd160, blake3};
-
-#[cfg(feature = "serde")]
-use serde;
-
 #[macro_use]
 mod macros;
 
-mod utils;
-mod signatures;
-mod error;
-mod data_structures;
+pub mod utils;
+pub mod signatures;
+pub mod error;
+pub mod data_structures;
 
 #[cfg(feature = "json")]
 pub mod json;
 #[cfg(feature = "wasm")]
 mod wasm;
+
+// 重新导出重要的类型
+pub use crate::data_structures::{Stack, TondiScript, ConditionStack};
+pub use crate::error::{ExecError, Result};
+pub use crate::signatures::{SignatureVerifier, ScriptSignatureVerifier};
+pub use crate::utils::{read_scriptint, scriptint_to_vec, hash160, sha256, sha256d, ripemd160, blake3};
 
 /// 最大操作码数量
 pub const MAX_OPS_PER_SCRIPT: usize = 201;
